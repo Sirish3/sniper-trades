@@ -1,0 +1,80 @@
+// Curated ETFs, sector/industry/thematic funds, and metals/commodity funds
+// for the "ETFs & Metals" universe (and merged into "Total Stock Market" by
+// assetUniverse.js). Most of these trade on NYSE Arca, so they aren't
+// covered by the NASDAQ/NYSE exchange filter used for the live equity list.
+//
+// Every symbol below was checked against Alpaca's /v2/assets endpoint before
+// being added (catches typos/delistings up front) — but Alpaca's tradable
+// flag can change over time, so use the "Refresh ETFs" action in the
+// 52-Week High tab to re-validate rather than trusting this list blindly.
+// One known case as of this writing: MOON (Direxion Moonshot Innovators
+// ETF) exists but Alpaca currently reports it as non-tradable.
+export const ETFS_AND_METALS = [
+  // ── Broad market ──
+  { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', sector: 'Broad Market' },
+  { symbol: 'VOO', name: 'Vanguard S&P 500 ETF', sector: 'Broad Market' },
+  { symbol: 'IVV', name: 'iShares Core S&P 500 ETF', sector: 'Broad Market' },
+  { symbol: 'VTI', name: 'Vanguard Total Stock Market ETF', sector: 'Broad Market' },
+  { symbol: 'QQQ', name: 'Invesco QQQ Trust', sector: 'Broad Market' },
+  { symbol: 'DIA', name: 'SPDR Dow Jones Industrial Average ETF', sector: 'Broad Market' },
+  { symbol: 'IWM', name: 'iShares Russell 2000 ETF', sector: 'Broad Market' },
+
+  // ── Core SPDR sector ETFs (all 11) ──
+  { symbol: 'XLK', name: 'Technology Select Sector SPDR Fund', sector: 'Sector ETF' },
+  { symbol: 'XLF', name: 'Financial Select Sector SPDR Fund', sector: 'Sector ETF' },
+  { symbol: 'XLV', name: 'Health Care Select Sector SPDR Fund', sector: 'Sector ETF' },
+  { symbol: 'XLE', name: 'Energy Select Sector SPDR Fund', sector: 'Sector ETF' },
+  { symbol: 'XLI', name: 'Industrial Select Sector SPDR Fund', sector: 'Sector ETF' },
+  { symbol: 'XLY', name: 'Consumer Discretionary Select Sector SPDR Fund', sector: 'Sector ETF' },
+  { symbol: 'XLP', name: 'Consumer Staples Select Sector SPDR Fund', sector: 'Sector ETF' },
+  { symbol: 'XLU', name: 'Utilities Select Sector SPDR Fund', sector: 'Sector ETF' },
+  { symbol: 'XLRE', name: 'Real Estate Select Sector SPDR Fund', sector: 'Sector ETF' },
+  { symbol: 'XLB', name: 'Materials Select Sector SPDR Fund', sector: 'Sector ETF' },
+  { symbol: 'XLC', name: 'Communication Services Select Sector SPDR Fund', sector: 'Sector ETF' },
+
+  // ── Industry-level ──
+  { symbol: 'SOXX', name: 'iShares Semiconductor ETF', sector: 'Industry ETF' },
+  { symbol: 'SMH', name: 'VanEck Semiconductor ETF', sector: 'Industry ETF' },
+  { symbol: 'IBB', name: 'iShares Biotechnology ETF', sector: 'Industry ETF' },
+  { symbol: 'XBI', name: 'SPDR S&P Biotech ETF', sector: 'Industry ETF' },
+  { symbol: 'XHB', name: 'SPDR S&P Homebuilders ETF', sector: 'Industry ETF' },
+  { symbol: 'ITB', name: 'iShares U.S. Home Construction ETF', sector: 'Industry ETF' },
+  { symbol: 'KRE', name: 'SPDR S&P Regional Banking ETF', sector: 'Industry ETF' },
+  { symbol: 'KBE', name: 'SPDR S&P Bank ETF', sector: 'Industry ETF' },
+  { symbol: 'XRT', name: 'SPDR S&P Retail ETF', sector: 'Industry ETF' },
+  { symbol: 'XME', name: 'SPDR S&P Metals & Mining ETF', sector: 'Industry ETF' },
+  { symbol: 'OIH', name: 'VanEck Oil Services ETF', sector: 'Industry ETF' },
+  { symbol: 'XOP', name: 'SPDR S&P Oil & Gas Exploration & Production ETF', sector: 'Industry ETF' },
+  { symbol: 'GDX', name: 'VanEck Gold Miners ETF', sector: 'Industry ETF' },
+  { symbol: 'GDXJ', name: 'VanEck Junior Gold Miners ETF', sector: 'Industry ETF' },
+  { symbol: 'SIL', name: 'Global X Silver Miners ETF', sector: 'Industry ETF' },
+  { symbol: 'COPX', name: 'Global X Copper Miners ETF', sector: 'Industry ETF' },
+  { symbol: 'SLX', name: 'VanEck Steel ETF', sector: 'Industry ETF' },
+  { symbol: 'IHI', name: 'iShares U.S. Medical Devices ETF', sector: 'Industry ETF' },
+  { symbol: 'XAR', name: 'SPDR S&P Aerospace & Defense ETF', sector: 'Industry ETF' },
+  { symbol: 'PAVE', name: 'Global X U.S. Infrastructure Development ETF', sector: 'Industry ETF' },
+  { symbol: 'MOO', name: 'VanEck Agribusiness ETF', sector: 'Industry ETF' },
+  { symbol: 'XHE', name: 'SPDR S&P Health Care Equipment ETF', sector: 'Industry ETF' },
+
+  // ── Thematic ──
+  { symbol: 'ARKK', name: 'ARK Innovation ETF', sector: 'Thematic ETF' },
+  { symbol: 'CIBR', name: 'First Trust NASDAQ Cybersecurity ETF', sector: 'Thematic ETF' },
+  { symbol: 'HACK', name: 'Amplify Cybersecurity ETF', sector: 'Thematic ETF' },
+  { symbol: 'CLOU', name: 'Global X Cloud Computing ETF', sector: 'Thematic ETF' },
+  { symbol: 'BOTZ', name: 'Global X Robotics & Artificial Intelligence ETF', sector: 'Thematic ETF' },
+  { symbol: 'FINX', name: 'Global X FinTech ETF', sector: 'Thematic ETF' },
+  { symbol: 'JETS', name: 'U.S. Global Jets ETF', sector: 'Thematic ETF' },
+  { symbol: 'ICLN', name: 'iShares Global Clean Energy ETF', sector: 'Thematic ETF' },
+  { symbol: 'BLOK', name: 'Amplify Blockchain Technology ETF', sector: 'Thematic ETF' },
+  { symbol: 'MOON', name: 'Direxion Moonshot Innovators ETF', sector: 'Thematic ETF' },
+  { symbol: 'METV', name: 'Roundhill Ball Metaverse ETF', sector: 'Thematic ETF' },
+  { symbol: 'ROBO', name: 'ROBO Global Robotics & Automation Index ETF', sector: 'Thematic ETF' },
+
+  // ── Metals & commodities ──
+  { symbol: 'GLD', name: 'SPDR Gold Shares', sector: 'Commodity / Metals' },
+  { symbol: 'IAU', name: 'iShares Gold Trust', sector: 'Commodity / Metals' },
+  { symbol: 'SLV', name: 'iShares Silver Trust', sector: 'Commodity / Metals' },
+  { symbol: 'SIVR', name: 'abrdn Physical Silver Shares ETF', sector: 'Commodity / Metals' },
+  { symbol: 'PPLT', name: 'abrdn Physical Platinum Shares ETF', sector: 'Commodity / Metals' },
+  { symbol: 'PALL', name: 'abrdn Physical Palladium Shares ETF', sector: 'Commodity / Metals' },
+]

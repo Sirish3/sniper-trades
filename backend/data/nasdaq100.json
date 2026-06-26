@@ -1,0 +1,517 @@
+[
+  {
+    "symbol": "AAPL",
+    "name": "Apple",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "MSFT",
+    "name": "Microsoft",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "NVDA",
+    "name": "NVIDIA",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "AVGO",
+    "name": "Broadcom",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "ADBE",
+    "name": "Adobe",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "AMD",
+    "name": "Advanced Micro Devices",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "CSCO",
+    "name": "Cisco Systems",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "INTC",
+    "name": "Intel",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "QCOM",
+    "name": "QUALCOMM",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "INTU",
+    "name": "Intuit",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "TXN",
+    "name": "Texas Instruments",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "AMAT",
+    "name": "Applied Materials",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "LRCX",
+    "name": "Lam Research",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "ADI",
+    "name": "Analog Devices",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "KLAC",
+    "name": "KLA Corporation",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "SNPS",
+    "name": "Synopsys",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "CDNS",
+    "name": "Cadence Design Systems",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "CRWD",
+    "name": "CrowdStrike Holdings",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "FTNT",
+    "name": "Fortinet",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "PANW",
+    "name": "Palo Alto Networks",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "MU",
+    "name": "Micron Technology",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "NXPI",
+    "name": "NXP Semiconductors",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "WDAY",
+    "name": "Workday",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "CTSH",
+    "name": "Cognizant Technology Solutions",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "DDOG",
+    "name": "Datadog",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "ON",
+    "name": "ON Semiconductor",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "ZS",
+    "name": "Zscaler",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "ANSS",
+    "name": "ANSYS",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "MRVL",
+    "name": "Marvell Technology",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "TEAM",
+    "name": "Atlassian",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "GFS",
+    "name": "GlobalFoundries",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "CDW",
+    "name": "CDW Corporation",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "MCHP",
+    "name": "Microchip Technology",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "ASML",
+    "name": "ASML Holding",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "ARM",
+    "name": "Arm Holdings",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "APP",
+    "name": "AppLovin",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "MSTR",
+    "name": "MicroStrategy",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "PLTR",
+    "name": "Palantir Technologies",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "VRSN",
+    "name": "Verisign",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "ENPH",
+    "name": "Enphase Energy",
+    "sector": "Information Technology"
+  },
+  {
+    "symbol": "AMGN",
+    "name": "Amgen",
+    "sector": "Health Care"
+  },
+  {
+    "symbol": "ISRG",
+    "name": "Intuitive Surgical",
+    "sector": "Health Care"
+  },
+  {
+    "symbol": "VRTX",
+    "name": "Vertex Pharmaceuticals",
+    "sector": "Health Care"
+  },
+  {
+    "symbol": "GILD",
+    "name": "Gilead Sciences",
+    "sector": "Health Care"
+  },
+  {
+    "symbol": "REGN",
+    "name": "Regeneron Pharmaceuticals",
+    "sector": "Health Care"
+  },
+  {
+    "symbol": "DXCM",
+    "name": "DexCom",
+    "sector": "Health Care"
+  },
+  {
+    "symbol": "IDXX",
+    "name": "IDEXX Laboratories",
+    "sector": "Health Care"
+  },
+  {
+    "symbol": "BIIB",
+    "name": "Biogen",
+    "sector": "Health Care"
+  },
+  {
+    "symbol": "GEHC",
+    "name": "GE HealthCare Technologies",
+    "sector": "Health Care"
+  },
+  {
+    "symbol": "ALGN",
+    "name": "Align Technology",
+    "sector": "Health Care"
+  },
+  {
+    "symbol": "AZN",
+    "name": "AstraZeneca",
+    "sector": "Health Care"
+  },
+  {
+    "symbol": "AMZN",
+    "name": "Amazon",
+    "sector": "Consumer Discretionary"
+  },
+  {
+    "symbol": "TSLA",
+    "name": "Tesla",
+    "sector": "Consumer Discretionary"
+  },
+  {
+    "symbol": "BKNG",
+    "name": "Booking Holdings",
+    "sector": "Consumer Discretionary"
+  },
+  {
+    "symbol": "SBUX",
+    "name": "Starbucks",
+    "sector": "Consumer Discretionary"
+  },
+  {
+    "symbol": "MELI",
+    "name": "MercadoLibre",
+    "sector": "Consumer Discretionary"
+  },
+  {
+    "symbol": "MAR",
+    "name": "Marriott International",
+    "sector": "Consumer Discretionary"
+  },
+  {
+    "symbol": "ORLY",
+    "name": "O'Reilly Automotive",
+    "sector": "Consumer Discretionary"
+  },
+  {
+    "symbol": "ABNB",
+    "name": "Airbnb",
+    "sector": "Consumer Discretionary"
+  },
+  {
+    "symbol": "ROST",
+    "name": "Ross Stores",
+    "sector": "Consumer Discretionary"
+  },
+  {
+    "symbol": "DLTR",
+    "name": "Dollar Tree",
+    "sector": "Consumer Discretionary"
+  },
+  {
+    "symbol": "LULU",
+    "name": "Lululemon Athletica",
+    "sector": "Consumer Discretionary"
+  },
+  {
+    "symbol": "PDD",
+    "name": "PDD Holdings",
+    "sector": "Consumer Discretionary"
+  },
+  {
+    "symbol": "DASH",
+    "name": "DoorDash",
+    "sector": "Consumer Discretionary"
+  },
+  {
+    "symbol": "COST",
+    "name": "Costco Wholesale",
+    "sector": "Consumer Staples"
+  },
+  {
+    "symbol": "PEP",
+    "name": "PepsiCo",
+    "sector": "Consumer Staples"
+  },
+  {
+    "symbol": "MDLZ",
+    "name": "Mondelez International",
+    "sector": "Consumer Staples"
+  },
+  {
+    "symbol": "MNST",
+    "name": "Monster Beverage",
+    "sector": "Consumer Staples"
+  },
+  {
+    "symbol": "KDP",
+    "name": "Keurig Dr Pepper",
+    "sector": "Consumer Staples"
+  },
+  {
+    "symbol": "KHC",
+    "name": "Kraft Heinz",
+    "sector": "Consumer Staples"
+  },
+  {
+    "symbol": "CCEP",
+    "name": "Coca-Cola Europacific Partners",
+    "sector": "Consumer Staples"
+  },
+  {
+    "symbol": "GOOGL",
+    "name": "Alphabet (Class A)",
+    "sector": "Communication Services"
+  },
+  {
+    "symbol": "GOOG",
+    "name": "Alphabet (Class C)",
+    "sector": "Communication Services"
+  },
+  {
+    "symbol": "META",
+    "name": "Meta Platforms",
+    "sector": "Communication Services"
+  },
+  {
+    "symbol": "NFLX",
+    "name": "Netflix",
+    "sector": "Communication Services"
+  },
+  {
+    "symbol": "CMCSA",
+    "name": "Comcast",
+    "sector": "Communication Services"
+  },
+  {
+    "symbol": "TMUS",
+    "name": "T-Mobile US",
+    "sector": "Communication Services"
+  },
+  {
+    "symbol": "CHTR",
+    "name": "Charter Communications",
+    "sector": "Communication Services"
+  },
+  {
+    "symbol": "EA",
+    "name": "Electronic Arts",
+    "sector": "Communication Services"
+  },
+  {
+    "symbol": "TTWO",
+    "name": "Take-Two Interactive Software",
+    "sector": "Communication Services"
+  },
+  {
+    "symbol": "WBD",
+    "name": "Warner Bros. Discovery",
+    "sector": "Communication Services"
+  },
+  {
+    "symbol": "SIRI",
+    "name": "Sirius XM Holdings",
+    "sector": "Communication Services"
+  },
+  {
+    "symbol": "TTD",
+    "name": "The Trade Desk",
+    "sector": "Communication Services"
+  },
+  {
+    "symbol": "HON",
+    "name": "Honeywell International",
+    "sector": "Industrials"
+  },
+  {
+    "symbol": "ADP",
+    "name": "Automatic Data Processing",
+    "sector": "Industrials"
+  },
+  {
+    "symbol": "CSX",
+    "name": "CSX Corporation",
+    "sector": "Industrials"
+  },
+  {
+    "symbol": "CTAS",
+    "name": "Cintas",
+    "sector": "Industrials"
+  },
+  {
+    "symbol": "PCAR",
+    "name": "PACCAR",
+    "sector": "Industrials"
+  },
+  {
+    "symbol": "PAYX",
+    "name": "Paychex",
+    "sector": "Industrials"
+  },
+  {
+    "symbol": "FAST",
+    "name": "Fastenal",
+    "sector": "Industrials"
+  },
+  {
+    "symbol": "ODFL",
+    "name": "Old Dominion Freight Line",
+    "sector": "Industrials"
+  },
+  {
+    "symbol": "VRSK",
+    "name": "Verisk Analytics",
+    "sector": "Industrials"
+  },
+  {
+    "symbol": "ROP",
+    "name": "Roper Technologies",
+    "sector": "Industrials"
+  },
+  {
+    "symbol": "CPRT",
+    "name": "Copart",
+    "sector": "Industrials"
+  },
+  {
+    "symbol": "AXON",
+    "name": "Axon Enterprise",
+    "sector": "Industrials"
+  },
+  {
+    "symbol": "PYPL",
+    "name": "PayPal Holdings",
+    "sector": "Financials"
+  },
+  {
+    "symbol": "AEP",
+    "name": "American Electric Power",
+    "sector": "Utilities"
+  },
+  {
+    "symbol": "EXC",
+    "name": "Exelon",
+    "sector": "Utilities"
+  },
+  {
+    "symbol": "XEL",
+    "name": "Xcel Energy",
+    "sector": "Utilities"
+  },
+  {
+    "symbol": "CEG",
+    "name": "Constellation Energy",
+    "sector": "Utilities"
+  },
+  {
+    "symbol": "LIN",
+    "name": "Linde",
+    "sector": "Materials"
+  },
+  {
+    "symbol": "FANG",
+    "name": "Diamondback Energy",
+    "sector": "Energy"
+  },
+  {
+    "symbol": "CSGP",
+    "name": "CoStar Group",
+    "sector": "Real Estate"
+  }
+]

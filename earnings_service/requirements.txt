@@ -1,0 +1,4 @@
+flask==3.0.3
+yfinance>=1.4.1
+pandas==2.1.4
+lxml>=5.0.0

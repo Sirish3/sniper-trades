@@ -1,0 +1,6 @@
+.env
+__pycache__/
+*.pyc
+signals_*.csv
+watchlist_*.csv
+full_scan_*.csv

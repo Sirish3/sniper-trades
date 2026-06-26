@@ -1,0 +1,6 @@
+yfinance
+pandas
+numpy
+anthropic
+python-dotenv
+tabulate

@@ -1,0 +1,11 @@
+flask==3.0.3
+gunicorn==22.0.0
+sqlalchemy==2.0.30
+psycopg2-binary==2.9.9  # Postgres driver, needed once DATABASE_URL points at a real Postgres instance (e.g. Neon) instead of the SQLite default
+apscheduler==3.10.4
+pandas-market-calendars==4.3.1
+pytz==2023.3
+yfinance>=1.4.1  # 0.2.36 (originally specified) fails against Yahoo's current backend — verified live, see chat
+pandas==2.1.4
+numpy==1.26.4
+python-dotenv==1.0.1

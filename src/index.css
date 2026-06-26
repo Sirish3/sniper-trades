@@ -1,0 +1,76 @@
+:root {
+  --bg: #0d0f14;
+  --surface: #13161e;
+  --surface-2: #181c27;
+  --border: #1e2330;
+
+  --green: #00c896;
+  --red: #ff4c4c;
+  --amber: #f59e0b;
+  --blue: #3b82f6;
+  --purple: #8b5cf6;
+  --gray: #64748b;
+
+  --text: #f1f5f9;
+  --text-muted: #64748b;
+
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-body);
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--blue);
+}
+
+button {
+  font-family: var(--font-body);
+}
+
+input {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: var(--purple);
+  color: var(--text);
+}

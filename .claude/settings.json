@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(npx --yes playwright --version)",
+      "Bash(npx --yes playwright install chromium)",
+      "Bash(node verify-hello.mjs)",
+      "Bash(curl -s http://localhost:5175)",
+      "Bash(curl -sf http://localhost:5175)"
+    ]
+  }
+}
