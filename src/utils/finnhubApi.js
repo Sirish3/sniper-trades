@@ -1,4 +1,4 @@
-const FINNHUB_URL = '/finnhub/api/v1'
+const FINNHUB_URL = 'https://finnhub.io/api/v1'
 
 // Finnhub's free tier allows 60 requests/min. A burst of concurrent requests
 // (e.g. scanning many tickers) can still trigger 429s well under that budget,

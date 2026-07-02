@@ -6,37 +6,6 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      // Alpaca market data (historical bars) lives on a separate host.
-      // Must be listed before '/alpaca' below — otherwise that broader
-      // prefix matches '/alpaca-data' requests first and routes them to
-      // the wrong host.
-      '/alpaca-data': {
-        target: 'https://data.alpaca.markets',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/alpaca-data/, ''),
-      },
-      // Alpaca's API doesn't send CORS headers, so proxy paper-trading
-      // requests through the dev server to avoid browser CORS errors.
-      '/alpaca': {
-        target: 'https://paper-api.alpaca.markets',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/alpaca/, ''),
-      },
-      // Finnhub doesn't send CORS headers either.
-      '/finnhub': {
-        target: 'https://finnhub.io',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/finnhub/, ''),
-      },
-      // Wikipedia's MediaWiki API for live S&P 500 / Nasdaq-100 constituent
-      // refreshes (Finnhub's and FMP's index-constituents endpoints both
-      // require a paid plan — confirmed against this project's free-tier
-      // keys, so Wikipedia's public constituents tables are the free option).
-      '/wikipedia': {
-        target: 'https://en.wikipedia.org',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/wikipedia/, ''),
-      },
       // The standalone Python execution-scheduler backend (backend/),
       // run separately via `python app.py` on port 8000. Proxied so the
       // Screener's "Email Alert" button avoids a cross-origin request.

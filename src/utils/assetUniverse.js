@@ -1,7 +1,7 @@
 import { authHeaders } from './alpacaApi'
 import { ETFS_AND_METALS } from '../data/etfsAndMetals'
 
-const ASSETS_URL = '/alpaca/v2/assets'
+const ASSETS_URL = 'https://paper-api.alpaca.markets/v2/assets'
 
 // Live "Total Stock Market" universe: every active, tradable, fractionable
 // NASDAQ/NYSE equity (~5000 tickers — Alpaca's fractionable flag is a decent

@@ -1,4 +1,4 @@
-const BASE_URL = '/alpaca/v2'
+const BASE_URL = 'https://paper-api.alpaca.markets/v2'
 
 export function authHeaders() {
   const keyId = import.meta.env.VITE_ALPACA_KEY_ID

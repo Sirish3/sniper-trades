@@ -11,7 +11,7 @@
 // "You don't have access to this resource." Wikipedia's constituents tables
 // are public and unauthenticated.
 
-const WIKIPEDIA_API = '/wikipedia/w/api.php'
+const WIKIPEDIA_API = 'https://en.wikipedia.org/w/api.php'
 const SP500_MIN_ROWS = 400 // sanity floor — if parsing breaks, fail loudly instead of returning a half-empty list
 const NASDAQ100_MIN_ROWS = 90
 

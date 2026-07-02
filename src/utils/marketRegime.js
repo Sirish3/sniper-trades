@@ -7,7 +7,7 @@ import { authHeaders } from './alpacaApi'
 import { sma, ema } from './indicators'
 import { isMajorEventThisWeek } from './economicCalendar'
 
-const ALPACA_DATA_URL = '/alpaca-data/v2/stocks'
+const ALPACA_DATA_URL = 'https://data.alpaca.markets/v2/stocks'
 export const ABORT_THRESHOLD = 40
 export const RUN_SCAN_THRESHOLD_DEFAULT = 55
 

@@ -1,6 +1,6 @@
 import { authHeaders } from './alpacaApi'
 
-const ALPACA_DATA_URL = '/alpaca-data/v2/stocks'
+const ALPACA_DATA_URL = 'https://data.alpaca.markets/v2/stocks'
 
 // Alpaca's free/paper data plan allows ~200 requests/min, but bursts of
 // concurrent requests can still trigger 429s. Use a modest batch size/delay

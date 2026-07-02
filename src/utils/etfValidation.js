@@ -8,7 +8,7 @@
 
 import { authHeaders } from './alpacaApi'
 
-const ASSETS_URL = '/alpaca/v2/assets'
+const ASSETS_URL = 'https://paper-api.alpaca.markets/v2/assets'
 
 export async function validateEtfTickers(tickers) {
   return Promise.all(

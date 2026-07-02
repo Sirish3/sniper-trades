@@ -3,7 +3,7 @@ import { fetchFinnhub } from './finnhubApi'
 import { sma, ema, rsi, macd, bollingerBands, atr, findSupportResistance, pctChange } from './indicators'
 import { getEasternTime, isRegularSession, MARKET_OPEN_MIN, MARKET_CLOSE_MIN } from './marketTime'
 
-const ALPACA_DATA_URL = '/alpaca-data/v2/stocks'
+const ALPACA_DATA_URL = 'https://data.alpaca.markets/v2/stocks'
 const POSITIVE_WORDS = [
   'beat', 'beats', 'surge', 'surges', 'upgrade', 'upgrades', 'growth', 'record', 'strong',
   'rally', 'outperform', 'soar', 'soars', 'jump', 'jumps', 'gain', 'gains', 'bullish',
