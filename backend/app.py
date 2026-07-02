@@ -11,6 +11,7 @@ import logging
 import os
 from datetime import datetime, timezone
 
+import requests
 from flask import Flask, jsonify, render_template_string, request
 
 from alerts import is_duplicate, send_email
@@ -33,6 +34,19 @@ app = Flask(__name__)
 # os.environ.get("WERKZEUG_RUN_MAIN") == "true" first, or the reloader's
 # parent process will start a second, redundant scheduler.
 _scheduler = start_scheduler()
+
+# Persistent session for Yahoo Finance proxy — keeps the crumb/cookie alive
+# across requests so the browser-side crumb dance works through the backend:
+# 1. Frontend calls /yahoo/v1/test/getcrumb → Flask fetches from Yahoo,
+#    Yahoo sets a session cookie here server-side, Flask returns the crumb text.
+# 2. Frontend calls /yahoo/v10/finance/quoteSummary/...?crumb=X → Flask
+#    forwards using the same session (cookie already set) → Yahoo accepts it.
+_yahoo_session = requests.Session()
+_yahoo_session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+})
 
 
 STATUS_PAGE = """
@@ -201,6 +215,38 @@ def add_manual_position():
             "trim1": round(position.trim1_price, 2),
             "trim2": round(position.trim2_price, 2),
         })
+
+
+@app.route("/yahoo/<path:subpath>", methods=["GET", "OPTIONS"])
+def yahoo_proxy(subpath):
+    """Forwards /yahoo/<subpath> to Yahoo Finance, keeping cookies in
+    _yahoo_session so the crumb dance works server-side (the browser never
+    needs a Yahoo cookie directly). Needed in production where there is no
+    Vite dev-server proxy — the frontend uses VITE_YAHOO_BASE_URL to point
+    here instead of hitting /yahoo relative to itself (stockpilot.cc)."""
+    if request.method == "OPTIONS":
+        resp = app.response_class(status=200)
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "*"
+        return resp
+
+    target = f"https://query1.finance.yahoo.com/{subpath}"
+    try:
+        yahoo_resp = _yahoo_session.get(
+            target,
+            params=request.args.to_dict(flat=True),
+            timeout=10,
+        )
+        resp = app.response_class(
+            response=yahoo_resp.content,
+            status=yahoo_resp.status_code,
+            content_type=yahoo_resp.headers.get("Content-Type", "application/json"),
+        )
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+    except Exception as exc:
+        logger.warning("Yahoo proxy error /%s: %s", subpath, exc)
+        return jsonify({"error": str(exc)}), 502
 
 
 if __name__ == "__main__":
