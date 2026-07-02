@@ -11,9 +11,10 @@ export async function onRequest(context) {
     })
   }
 
-  const url = new URL(request.url)
-  const path = url.pathname.replace(/^\/yahoo/, '')
-  const yahooUrl = `https://query1.finance.yahoo.com${path}${url.search}`
+  // Use raw URL string to preserve percent-encoding (%5EVIX must not be
+  // decoded to ^VIX before we hand it to Yahoo — URL.pathname decodes it).
+  const afterYahoo = request.url.replace(/^https?:\/\/[^/]+\/yahoo/, '')
+  const yahooUrl = `https://query2.finance.yahoo.com${afterYahoo}`
 
   try {
     const response = await fetch(yahooUrl, {
@@ -21,6 +22,8 @@ export async function onRequest(context) {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://finance.yahoo.com/',
+        'Origin': 'https://finance.yahoo.com',
       },
     })
 
@@ -30,6 +33,7 @@ export async function onRequest(context) {
       headers: {
         'Content-Type': response.headers.get('Content-Type') || 'application/json',
         'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-store',
       },
     })
   } catch (err) {
