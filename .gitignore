@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+vite.config.js.timestamp-*
 
 # Secrets and Python virtualenvs — catch-all in case a subdirectory's own
 # .gitignore misses one; every .env here is a real credential (Neon DB
