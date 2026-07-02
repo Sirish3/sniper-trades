@@ -4,7 +4,7 @@ import { sma, ema, rsi, macd, bollingerBands, atr, findSupportResistance, pctCha
 import { getEasternTime, isRegularSession, MARKET_OPEN_MIN, MARKET_CLOSE_MIN } from './marketTime'
 
 const ALPACA_DATA_URL = '/alpaca-data/v2/stocks'
-const YAHOO_URL = import.meta.env.VITE_YAHOO_BASE_URL ?? '/yahoo'
+const YAHOO_URL = '/yahoo'
 
 const POSITIVE_WORDS = [
   'beat', 'beats', 'surge', 'surges', 'upgrade', 'upgrades', 'growth', 'record', 'strong',

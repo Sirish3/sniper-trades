@@ -43,6 +43,15 @@
   color: var(--green);
 }
 
+.brand-version {
+  margin-left: 0.45em;
+  font-size: 0.55em;
+  font-weight: 600;
+  color: var(--text-muted, #888);
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}
+
 .header-actions {
   display: flex;
   align-items: center;

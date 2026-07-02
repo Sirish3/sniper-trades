@@ -59,6 +59,7 @@ function App() {
           <span className="brand-mark">◆</span>
           <h1 className="brand-name">
             Swing Trade Analyzer <span className="brand-pro">Pro</span>
+            <span className="brand-version">v1</span>
           </h1>
         </div>
         <div className="header-actions">

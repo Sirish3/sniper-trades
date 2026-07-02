@@ -8,11 +8,7 @@ import { sma, ema } from './indicators'
 import { isMajorEventThisWeek } from './economicCalendar'
 
 const ALPACA_DATA_URL = '/alpaca-data/v2/stocks'
-// In dev, VITE_YAHOO_BASE_URL is unset so this falls back to '/yahoo' —
-// Vite's dev-server proxy rewrites that to query1.finance.yahoo.com.
-// In production (stockpilot.cc), it's set to the Render backend URL so
-// the request goes through the Flask /yahoo/<path> proxy there instead.
-const YAHOO_CHART_URL = `${import.meta.env.VITE_YAHOO_BASE_URL ?? '/yahoo'}/v8/finance/chart`
+const YAHOO_CHART_URL = '/yahoo/v8/finance/chart'
 
 export const ABORT_THRESHOLD = 40
 export const RUN_SCAN_THRESHOLD_DEFAULT = 55
