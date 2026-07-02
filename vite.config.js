@@ -28,14 +28,6 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/finnhub/, ''),
       },
-      // Yahoo Finance (unofficial) for short interest — needs the crumb/cookie
-      // dance, so rewrite the cookie domain to localhost to make it stick.
-      '/yahoo': {
-        target: 'https://query1.finance.yahoo.com',
-        changeOrigin: true,
-        cookieDomainRewrite: 'localhost',
-        rewrite: (path) => path.replace(/^\/yahoo/, ''),
-      },
       // Wikipedia's MediaWiki API for live S&P 500 / Nasdaq-100 constituent
       // refreshes (Finnhub's and FMP's index-constituents endpoints both
       // require a paid plan — confirmed against this project's free-tier

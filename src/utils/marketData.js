@@ -4,8 +4,6 @@ import { sma, ema, rsi, macd, bollingerBands, atr, findSupportResistance, pctCha
 import { getEasternTime, isRegularSession, MARKET_OPEN_MIN, MARKET_CLOSE_MIN } from './marketTime'
 
 const ALPACA_DATA_URL = '/alpaca-data/v2/stocks'
-const YAHOO_URL = '/yahoo'
-
 const POSITIVE_WORDS = [
   'beat', 'beats', 'surge', 'surges', 'upgrade', 'upgrades', 'growth', 'record', 'strong',
   'rally', 'outperform', 'soar', 'soars', 'jump', 'jumps', 'gain', 'gains', 'bullish',
@@ -178,31 +176,6 @@ function scoreNewsSentiment(articles) {
     for (const word of NEGATIVE_WORDS) if (text.includes(word)) negative++
   }
   return { positive, negative, total: articles.length }
-}
-
-// Unofficial Yahoo Finance endpoint (the same one yfinance scrapes). Requires
-// a crumb token tied to a cookie from the same proxy origin. Either step can
-// fail or change shape without notice, so any failure just means "unavailable".
-async function fetchShortInterest(symbol) {
-  try {
-    const crumbRes = await fetch(`${YAHOO_URL}/v1/test/getcrumb`, { credentials: 'include' })
-    if (!crumbRes.ok) return null
-    const crumb = (await crumbRes.text()).trim()
-    if (!crumb || crumb.includes('<')) return null
-
-    const statsRes = await fetch(
-      `${YAHOO_URL}/v10/finance/quoteSummary/${symbol}?modules=defaultKeyStatistics&crumb=${encodeURIComponent(crumb)}`,
-      { credentials: 'include' }
-    )
-    if (!statsRes.ok) return null
-    const data = await statsRes.json()
-    const stats = data?.quoteSummary?.result?.[0]?.defaultKeyStatistics
-    if (!stats) return null
-
-    return { shortPercentOfFloat: stats.shortPercentOfFloat?.raw ?? null }
-  } catch {
-    return null
-  }
 }
 
 export async function getTechnicalAnalysis(ticker) {
@@ -378,31 +351,12 @@ export async function getTechnicalAnalysis(ticker) {
     }
   }
 
-  // --- Short interest — 5% — Yahoo (unofficial, graceful fallback) ---
-  const short = await fetchShortInterest(symbol)
-  let shortStatus = 'warn'
-  let shortValue = 'Short interest unavailable.'
-  if (short?.shortPercentOfFloat != null) {
-    const pct = short.shortPercentOfFloat * 100
-    if (pct < 5) {
-      shortStatus = 'pass'
-      shortValue = `${pct.toFixed(1)}% of float short — low.`
-    } else if (pct < 15) {
-      shortStatus = 'warn'
-      shortValue = `${pct.toFixed(1)}% of float short — elevated.`
-    } else {
-      shortStatus = 'fail'
-      shortValue = `${pct.toFixed(1)}% of float short — heavily shorted.`
-    }
-  }
-
   const entryMetrics = [
     { name: 'Trend (50/200 DMA)', status: trendStatus, value: trendValue },
     { name: 'RSI (14)', status: rsiStatus, value: rsiValue },
     { name: 'MACD', status: macdStatus, value: macdValue },
     { name: 'Volume confirmation', status: volStatus, value: volValue },
     { name: 'Relative strength vs SPY', status: rsStatus, value: rsValue },
-    { name: 'Short interest', status: shortStatus, value: shortValue },
     { name: 'News sentiment', status: newsStatus, value: newsValue },
     { name: 'Risk / reward ratio', status: rrStatus, value: rrValue },
     { name: 'Bollinger Band position', status: bbStatus, value: bbValue },
@@ -469,7 +423,6 @@ export async function getTechnicalAnalysis(ticker) {
 - Volume: ${volValue}
 - Relative strength: ${rsValue}
 - ${rrValue}
-- Short interest: ${shortValue}
 - News sentiment: ${newsValue}
 - Earnings: ${earningsValue}
 - Entry checklist: ${entryScore}/${entryMetrics.length} passing

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { loadPositions, savePositions, upsertPosition, removePosition, evaluateOpenPositions, addPositionFromEntry } from '../utils/positions'
-import { fetchAlpacaCloses, fetchYahooCloses, scoreTrend } from '../utils/marketRegime'
+import { fetchAlpacaCloses, scoreTrend } from '../utils/marketRegime'
 import { analyzeOpenPosition } from '../utils/stockAnalysis'
 import { logPositionAlerts } from '../utils/alerts'
 import { LoaderIcon } from './Icons'
@@ -38,10 +38,10 @@ function OpenPositions() {
     }
     setLoadingEval(true)
     try {
-      const [spyResult, vixResult] = await Promise.allSettled([fetchAlpacaCloses('SPY'), fetchYahooCloses('%5EVIX')])
+      const [spyResult] = await Promise.allSettled([fetchAlpacaCloses('SPY')])
       const marketContext = {
         spyAbove200: spyResult.status === 'fulfilled' ? scoreTrend(spyResult.value).above200 : null,
-        vixCurrent: vixResult.status === 'fulfilled' ? vixResult.value[vixResult.value.length - 1] : null,
+        vixCurrent: null,
       }
       const results = await evaluateOpenPositions(list, marketContext)
       setEvaluations(new Map(results.map((r) => [r.position.id, r])))

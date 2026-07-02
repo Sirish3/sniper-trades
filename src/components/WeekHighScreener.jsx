@@ -11,7 +11,7 @@ import { fetchSp500FromWikipedia, fetchNasdaq100FromWikipedia, diffConstituents 
 import { validateEtfTickers } from '../utils/etfValidation'
 import { analyzeStock } from '../utils/stockAnalysis'
 import { logBuyAlerts } from '../utils/alerts'
-import { fetchAlpacaCloses, fetchYahooCloses, returnOverLookback } from '../utils/marketRegime'
+import { fetchAlpacaCloses, returnOverLookback } from '../utils/marketRegime'
 import { fetchEarningsCalendar } from '../utils/marketData'
 import {
   FOMC_DECISION_DATES, CPI_DATES, PPI_DATES, NFP_DATES, ADP_DATES, PCE_DATES,
@@ -267,11 +267,9 @@ function MarketBanner() {
     Promise.allSettled([
       fetchAlpacaCloses('SPY'),
       fetchAlpacaCloses('QQQ'),
-      fetchYahooCloses('%5EVIX'),
-    ]).then(([spyR, qqqR, vixR]) => {
+    ]).then(([spyR, qqqR]) => {
       if (spyR.status === 'fulfilled') setSpy(analyzeMa(spyR.value))
       if (qqqR.status === 'fulfilled') setQqq(analyzeMa(qqqR.value))
-      if (vixR.status === 'fulfilled') setVix(vixR.value[vixR.value.length - 1])
       setLoaded(true)
     })
   }, [])

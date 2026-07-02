@@ -8,8 +8,6 @@ import { sma, ema } from './indicators'
 import { isMajorEventThisWeek } from './economicCalendar'
 
 const ALPACA_DATA_URL = '/alpaca-data/v2/stocks'
-const YAHOO_CHART_URL = '/yahoo/v8/finance/chart'
-
 export const ABORT_THRESHOLD = 40
 export const RUN_SCAN_THRESHOLD_DEFAULT = 55
 
@@ -48,25 +46,6 @@ export async function fetchAlpacaCloses(symbol) {
     throw new Error(`No market data returned for ${symbol}`)
   }
   return bars.map((b) => b.c)
-}
-
-export async function fetchYahooCloses(symbol) {
-  const response = await fetch(`${YAHOO_CHART_URL}/${symbol}?range=1y&interval=1d`)
-  if (!response.ok) {
-    throw new Error(`Yahoo chart request failed (${response.status}) for ${symbol}`)
-  }
-
-  const data = await response.json()
-  const closes = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close
-  if (!Array.isArray(closes)) {
-    throw new Error(`No chart data returned for ${symbol}`)
-  }
-
-  const clean = closes.filter((c) => c != null)
-  if (clean.length === 0) {
-    throw new Error(`No usable close prices for ${symbol}`)
-  }
-  return clean
 }
 
 // Rolling mean at `period`, falling back to the full-series mean if the
@@ -256,9 +235,8 @@ export function classifyRiskEnvironment(regimeScore, date = new Date()) {
 export async function checkMarketRegime(threshold = RUN_SCAN_THRESHOLD_DEFAULT) {
   const warnings = []
 
-  const [spyResult, vixResult, iwmResult, qqqResult] = await Promise.allSettled([
+  const [spyResult, iwmResult, qqqResult] = await Promise.allSettled([
     fetchAlpacaCloses('SPY'),
-    fetchYahooCloses('%5EVIX'),
     fetchAlpacaCloses('IWM'),
     fetchAlpacaCloses('QQQ'),
   ])
@@ -272,22 +250,12 @@ export async function checkMarketRegime(threshold = RUN_SCAN_THRESHOLD_DEFAULT) 
   }
   const spy = scoreSpyTrend(spyCloses)
 
-  let vix
-  if (vixResult.status === 'rejected') {
-    warnings.push('VIX fetch failed — using default VIX score (12/25)')
-    vix = {
-      vixCurrent: 0,
-      vixSma20: 0,
-      vixTrend: 'UNKNOWN',
-      vixScore: VIX_SCORE_DEFAULT,
-      vixLabel: 'UNKNOWN — VIX data unavailable',
-    }
-  } else {
-    const vixCloses = vixResult.value
-    if (vixCloses.length < 20) {
-      warnings.push(`VIX history is only ${vixCloses.length} bars (<20) — using available bars for trend average`)
-    }
-    vix = scoreVix(vixCloses)
+  const vix = {
+    vixCurrent: 0,
+    vixSma20: 0,
+    vixTrend: 'UNKNOWN',
+    vixScore: VIX_SCORE_DEFAULT,
+    vixLabel: 'UNKNOWN — VIX data unavailable',
   }
 
   let breadth
