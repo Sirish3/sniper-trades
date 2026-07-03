@@ -63,16 +63,17 @@ export function createPosition({ symbol, name, sector, grade, entryPrice, entryD
   }
 }
 
-// Best-effort sync to the Python scheduler's own Position table (via
-// backend/app.py's /api/positions/manual, proxied through '/scheduler-api')
-// so the existing 2PM trim-check and 3:50PM stop/time-stop jobs pick this
-// position up and email trim/stop suggestions on their normal schedule —
-// this app's own localStorage tracking only evaluates while this page is
-// open. Failure here (backend not running, etc.) never blocks the local
-// add — it only means scheduled email alerts won't fire for this position.
+// Best-effort sync to the Python scheduler's own Position table, deployed
+// separately at https://sniper-trades.onrender.com (backend/app.py's
+// /api/positions/manual), so the existing 2PM trim-check and 3:50PM
+// stop/time-stop jobs pick this position up and email trim/stop
+// suggestions on their normal schedule — this app's own localStorage
+// tracking only evaluates while this page is open. Failure here (backend
+// unreachable, etc.) never blocks the local add — it only means scheduled
+// email alerts won't fire for this position.
 async function syncManualPositionToBackend({ symbol, entryPrice, shares, entryDate, grade, sector }) {
   try {
-    const res = await fetch('/scheduler-api/api/positions/manual', {
+    const res = await fetch('https://sniper-trades.onrender.com/api/positions/manual', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ticker: symbol, entry_price: entryPrice, shares, entry_date: entryDate, grade, sector_etf: sector }),

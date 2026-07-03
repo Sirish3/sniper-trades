@@ -107,7 +107,7 @@ export default function Backtester() {
     setEmailSending(true)
     setEmailStatus(null)
     try {
-      const res = await fetch('/scheduler-api/api/qqq-signal/send', { method: 'POST' })
+      const res = await fetch('https://sniper-trades.onrender.com/api/qqq-signal/send', { method: 'POST' })
       const data = await res.json()
       setEmailStatus(data.ok ? 'sent' : 'error')
     } catch {
