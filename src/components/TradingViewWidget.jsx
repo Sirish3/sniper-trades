@@ -13,14 +13,17 @@ const EMBED_SCRIPT_SRC = 'https://s3.tradingview.com/external-embedding/embed-wi
 export default function TradingViewWidget({
   symbol = 'NASDAQ:QQQ',
   interval = 'D',
-  studies = ['MAExp@tv-basicstudies'],
+  // "Moving Average" (SMA) with length 1 just traces the raw close price —
+  // the standard trick for a distinctly-colorable "price line" overlay on
+  // top of candles, since the main series itself can only be one style
+  // (candles OR line, not both) and its color otherwise follows candle
+  // up/down state rather than a fixed color.
+  studies = ['MASimple@tv-basicstudies', 'MAExp@tv-basicstudies'],
   studiesOverrides = {
+    'moving average.length': 1,
+    'moving average.plot.color': '#00c896', // green, matches --green
     'moving average exponential.length': 10,
     'moving average exponential.plot.color': '#ff4c4c', // red, matches --red
-  },
-  overrides = {
-    'mainSeriesProperties.lineStyle.color': '#00c896', // green, matches --green
-    'mainSeriesProperties.lineStyle.linewidth': 2,
   },
   height = 550,
   containerId,
@@ -50,14 +53,13 @@ export default function TradingViewWidget({
       interval,
       timezone: 'Etc/UTC',
       theme: 'dark',
-      style: '2', // Line — plain price line, with the EMA(10) study overlaid on top
+      style: '1', // Candles — price line and EMA(10) are overlaid as studies below
       locale: 'en',
       withdateranges: true, // shows the built-in 1D/1M/3M/YTD/1Y/5Y/ALL range toolbar
       range: '12M',
       allow_symbol_change: true,
       studies,
       studies_overrides: studiesOverrides,
-      overrides,
       support_host: 'https://www.tradingview.com',
     }
 
@@ -88,7 +90,7 @@ export default function TradingViewWidget({
       clearTimeout(timeout)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol, interval, widgetId, JSON.stringify(studies), JSON.stringify(studiesOverrides), JSON.stringify(overrides)])
+  }, [symbol, interval, widgetId, JSON.stringify(studies), JSON.stringify(studiesOverrides)])
 
   const heightVar = { '--tv-height': `${height}px` }
 
