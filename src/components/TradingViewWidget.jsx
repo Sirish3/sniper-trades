@@ -43,7 +43,7 @@ export default function TradingViewWidget({
       interval,
       timezone: 'Etc/UTC',
       theme: 'dark',
-      style: '1',
+      style: '2', // Line — plain price line, with the EMA(10) study overlaid on top
       locale: 'en',
       withdateranges: true, // shows the built-in 1D/1M/3M/YTD/1Y/5Y/ALL range toolbar
       range: '12M',
