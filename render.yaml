@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: sniper-trades-scheduler
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: starter # free tier spins down on idle, which breaks the 10/2/3:50 scheduler
+    healthCheckPath: /health
+    envVars:
+      - key: PORTFOLIO_SIZE
+        value: 100000
+      - key: DATABASE_URL
+        sync: false # set to a persistent Postgres URL (e.g. Neon/Supabase) if not using a Render disk
+      - key: EMAIL_ADDRESS
+        sync: false
+      - key: EMAIL_APP_PASSWORD
+        sync: false
+      - key: ALERT_TO_EMAIL
+        sync: false
