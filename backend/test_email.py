@@ -1,4 +1,4 @@
-"""Run this once to confirm Gmail SMTP alert delivery is working.
+"""Run this once to confirm Resend alert delivery is working.
 
 Sends a real test email to ALERT_TO_EMAIL. Usage: python backend/test_email.py
 (run from inside backend/, with the venv active and .env filled in).

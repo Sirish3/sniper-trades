@@ -11,9 +11,9 @@ services:
         value: 100000
       - key: DATABASE_URL
         sync: false # set to a persistent Postgres URL (e.g. Neon/Supabase) if not using a Render disk
-      - key: EMAIL_ADDRESS
+      - key: RESEND_API_KEY
         sync: false
-      - key: EMAIL_APP_PASSWORD
+      - key: RESEND_FROM_EMAIL
         sync: false
       - key: ALERT_TO_EMAIL
         sync: false

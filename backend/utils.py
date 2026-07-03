@@ -165,15 +165,15 @@ def earnings_within_days(ticker: str, days: int = 7) -> bool:
     return _cached(f"earnings:{ticker}", EARNINGS_CACHE_SECONDS, compute)
 
 
-_EMAIL_REQUIRED_VARS = ("EMAIL_ADDRESS", "EMAIL_APP_PASSWORD", "ALERT_TO_EMAIL")
+_EMAIL_REQUIRED_VARS = ("RESEND_API_KEY", "ALERT_TO_EMAIL")
 
 
 def validate_email_config() -> bool:
-    """Checks EMAIL_ADDRESS/EMAIL_APP_PASSWORD/ALERT_TO_EMAIL are set.
+    """Checks RESEND_API_KEY/ALERT_TO_EMAIL are set.
 
-    Called once at scheduler startup. Makes no real SMTP connection. Logs
-    which vars are missing if any — never logs the actual values. Returns
-    True only if all 3 are set and non-empty.
+    Called once at scheduler startup. Makes no real API call. Logs which
+    vars are missing if any — never logs the actual values. Returns True
+    only if both are set and non-empty.
     """
     all_ok = True
     for var in _EMAIL_REQUIRED_VARS:

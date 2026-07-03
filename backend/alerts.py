@@ -1,26 +1,26 @@
-"""Alert formatting, deduplication, and delivery via Gmail SMTP.
+"""Alert formatting, deduplication, and delivery via Resend's HTTP API.
 
 Twilio SMS was tried first and dropped — see config.py's comment for why
-(toll-free verification blocked delivery). Email needs no equivalent
-carrier review, so this sends plain-text alert emails instead.
+(toll-free verification blocked delivery). Gmail SMTP was tried second
+and dropped — Render blocks outbound SMTP on all plans, so smtplib
+connections fail with "Network is unreachable" regardless of
+credentials; Resend's HTTPS API (port 443) is never blocked.
 """
 from __future__ import annotations
 
 import logging
-import smtplib
 import time
 from datetime import datetime, timedelta, timezone
-from email.mime.text import MIMEText
-from email.utils import make_msgid
 
-from config import ALERT_TO_EMAIL, EMAIL_ADDRESS, EMAIL_APP_PASSWORD
+import requests
+
+from config import ALERT_TO_EMAIL, RESEND_API_KEY, RESEND_FROM_EMAIL
 from database import AlertLog, get_session
 from utils import validate_email_config  # noqa: F401  (re-exported for test_email.py)
 
 logger = logging.getLogger(__name__)
 
-SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = 587
+RESEND_API_URL = "https://api.resend.com/emails"
 
 DEDUP_WINDOW_HOURS = 24
 EMAIL_MIN_INTERVAL_SECONDS = 1.0  # spaces out multiple sends in the same scan run
@@ -55,36 +55,39 @@ def _rate_limit() -> None:
 
 
 def _send_email_raw(subject: str, body: str) -> tuple[bool, str | None]:
-    """Sends one alert email via Gmail SMTP; returns (success, message_id).
+    """Sends one alert email via Resend's HTTP API; returns (success, message_id).
     Internal — send_email() wraps this for the bool-only public contract,
     send_alert() uses it directly so it can log the real message_id.
     """
-    if not EMAIL_ADDRESS or not EMAIL_APP_PASSWORD or not ALERT_TO_EMAIL:
-        logger.warning("send_email: EMAIL_ADDRESS/EMAIL_APP_PASSWORD/ALERT_TO_EMAIL not fully set — skipping send")
+    if not RESEND_API_KEY or not ALERT_TO_EMAIL:
+        logger.warning("send_email: RESEND_API_KEY/ALERT_TO_EMAIL not fully set — skipping send")
         return False, None
 
     _rate_limit()
     try:
-        msg = MIMEText(body, 'plain', 'utf-8')
-        msg["Subject"] = subject
-        msg["From"] = EMAIL_ADDRESS
-        msg["To"] = ALERT_TO_EMAIL
-        msg["Message-ID"] = make_msgid()
-
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
-            server.starttls()
-            server.login(EMAIL_ADDRESS, EMAIL_APP_PASSWORD)
-            server.sendmail(EMAIL_ADDRESS, [ALERT_TO_EMAIL], msg.as_string())
+        response = requests.post(
+            RESEND_API_URL,
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+            json={
+                "from": RESEND_FROM_EMAIL,
+                "to": [ALERT_TO_EMAIL],
+                "subject": subject,
+                "text": body,
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        message_id = response.json().get("id")
 
         logger.info("Email sent: %s", subject)
-        return True, msg["Message-ID"]
+        return True, message_id
     except Exception as exc:
         logger.error("Email failed: %s", exc)
         return False, None
 
 
 def send_email(subject: str, body: str) -> bool:
-    """Sends one alert email via Gmail SMTP.
+    """Sends one alert email via Resend's HTTP API.
 
     Reads all credentials from environment variables (via config.py) —
     never hardcodes a credential value. Returns True on success, False on

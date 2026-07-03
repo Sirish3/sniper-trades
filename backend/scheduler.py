@@ -249,7 +249,7 @@ def start_scheduler() -> BackgroundScheduler:
 
     if not validate_email_config():
         logger.error("Email not configured — alerts disabled")
-        logger.error("Check .env file for EMAIL_ADDRESS/EMAIL_APP_PASSWORD/ALERT_TO_EMAIL")
+        logger.error("Check .env file for RESEND_API_KEY/ALERT_TO_EMAIL")
         # Continue running — just no email will be sent.
 
     scheduler = build_scheduler()

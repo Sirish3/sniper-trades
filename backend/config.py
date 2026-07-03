@@ -79,16 +79,20 @@ FOMC_DATES: list[str] = []
 # would otherwise resolve to "" and break create_engine(). `or` handles both.
 DATABASE_URL = os.environ.get("DATABASE_URL") or f"sqlite:///{BASE_DIR / 'data' / 'scheduler.db'}"
 
-# ── Alerts (Gmail SMTP) ───────────────────────────────────────────────────
+# ── Alerts (Resend HTTP API) ──────────────────────────────────────────────
 # Twilio SMS was tried first and dropped: the only number on the account
 # was toll-free and required Toll-Free Verification (carrier-side
 # delivery failure, error 30032) before it could deliver anything — a
-# multi-day-to-multi-week review process. Email needs no such review.
-# EMAIL_APP_PASSWORD must be a Gmail "app password" (myaccount.google.com
-# /apppasswords, requires 2-Step Verification first) — not the normal
-# account password, which Gmail's SMTP no longer accepts for script logins.
-EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS", "")
-EMAIL_APP_PASSWORD = os.environ.get("EMAIL_APP_PASSWORD", "")
+# multi-day-to-multi-week review process.
+# Gmail SMTP was tried second and dropped: Render blocks outbound SMTP
+# (ports 25/465/587) on all plans as an anti-spam measure, so smtplib
+# connections fail with "[Errno 101] Network is unreachable" no matter
+# how correct the credentials are — confirmed live via Render's logs.
+# Resend's HTTP API (port 443, never blocked) replaces it.
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+# Resend's shared sandbox sender — only deliverable to the email that
+# owns the Resend account unless/until a custom domain is verified there.
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "onboarding@resend.dev")
 ALERT_TO_EMAIL = os.environ.get("ALERT_TO_EMAIL", "")
 
 # ── Scheduler ─────────────────────────────────────────────────────────────

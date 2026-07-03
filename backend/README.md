@@ -34,17 +34,19 @@ in code comments at the fix sites too):
 
 Other decisions made from your answers when this was scoped:
 
-- **Alerts**: email via Gmail SMTP. Twilio SMS was tried first and
+- **Alerts**: email via Resend's HTTP API. Twilio SMS was tried first and
   dropped — the only number on the Twilio account was toll-free and
   required Toll-Free Verification (a multi-day-to-multi-week carrier
   compliance review) before any message would actually deliver; the API
   call succeeded but the carrier silently dropped the message
   (error 30032), confirmed by checking real delivery status via the
-  Twilio API, not just the create-call response. Email needs no
-  equivalent review. `EMAIL_APP_PASSWORD` must be a Gmail "app password"
-  (https://myaccount.google.com/apppasswords, requires 2-Step
-  Verification first) — Gmail's SMTP no longer accepts the normal account
-  password for script logins. Put real credentials in `.env` (see
+  Twilio API, not just the create-call response. Gmail SMTP was tried
+  second and dropped — Render blocks outbound SMTP (ports 25/465/587) on
+  all plans as an anti-spam measure, so `smtplib` connections failed with
+  `[Errno 101] Network is unreachable` regardless of credentials,
+  confirmed live via Render's logs. Resend's API runs over HTTPS (port
+  443), which is never blocked. Get a key at
+  https://resend.com/api-keys. Put real credentials in `.env` (see
   `.env.example`) — never paste them into a chat with anyone, including an
   AI assistant.
 - **Position creation**: fully automatic at the calculated entry price
@@ -135,7 +137,7 @@ a local SQLite file.
 | `utils.py` | Market-open check, regime, FOMC day, earnings-within-days |
 | `scanner.py` | Breakout/retest scans, sector ETF heat |
 | `signals.py` | Grading, trade-plan sizing, signal persistence, close-validation |
-| `alerts.py` | Gmail SMTP email + alert formatting + dedup |
+| `alerts.py` | Resend HTTP API email + alert formatting + dedup |
 | `portfolio.py` | Position lifecycle: stops, trims, trailing stop, close, snapshot |
 | `scheduler.py` | The 3 cron jobs |
 | `app.py` | Flask status page; starts the scheduler |
