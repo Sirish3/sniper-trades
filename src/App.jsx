@@ -5,6 +5,7 @@ import AlpacaStatus from './components/AlpacaStatus'
 import Footer from './components/Footer'
 import AnalysisResult from './components/AnalysisResult'
 import WeekHighScreener from './components/WeekHighScreener'
+import Backtester from './components/Backtester'
 import { SearchIcon, LoaderIcon } from './components/Icons'
 import { analyzeTicker } from './utils/claudeApi'
 import { getTechnicalAnalysis } from './utils/marketData'
@@ -81,6 +82,12 @@ function App() {
         >
           52W High
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'backtester' ? 'active' : ''}`}
+          onClick={() => setActiveTab('backtester')}
+        >
+          QQQ
+        </button>
       </nav>
 
       <main className="app-main">
@@ -115,6 +122,7 @@ function App() {
         )}
 
         {activeTab === 'weekhigh' && <WeekHighScreener />}
+        {activeTab === 'backtester' && <Backtester />}
       </main>
 
       <Footer />

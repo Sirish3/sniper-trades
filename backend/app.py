@@ -15,6 +15,7 @@ from flask import Flask, jsonify, render_template_string, request
 
 from alerts import is_duplicate, send_email
 from database import AlertLog, Position, get_session
+from qqq_signal import build_qqq_email, get_qqq_signal, load_previous_state
 from portfolio import create_manual_position
 from scheduler import start_scheduler
 
@@ -46,6 +47,7 @@ STATUS_PAGE = """
 </style>
 <h1>Execution Scheduler</h1>
 <p>Jobs: 10:00 AM entry | 2:00 PM retest+trim | 3:50 PM exit (Mon-Fri, US/Eastern)</p>
+<p>QQQ cycle: 9:00 AM CST morning brief | 2:30 PM CST pre-close | 4:15 PM CST final signal</p>
 
 <h2>Open Positions ({{ positions|length }})</h2>
 <table>
@@ -200,6 +202,29 @@ def add_manual_position():
             "trim1": round(position.trim1_price, 2),
             "trim2": round(position.trim2_price, 2),
         })
+
+
+@app.route("/api/qqq-signal/send", methods=["POST"])
+def qqq_signal_send():
+    """On-demand QQQ signal email — called from the React app's 'Send Signal Email' button.
+
+    Sends the same email as the 4:15 PM close job (authoritative signal),
+    but without saving state (so it doesn't affect tomorrow's SWITCH detection).
+    Does NOT require the market to be open — useful for manual checks anytime.
+    """
+    try:
+        signal     = get_qqq_signal()
+        prev_state = load_previous_state()
+        subject, body = build_qqq_email(signal, prev_state, timing="close")
+        ok = send_email(subject, body)
+        return jsonify({
+            "ok": ok,
+            "state": signal["state"],
+            "price": round(signal["price"], 2),
+            "ema10": round(signal["ema10"], 2),
+        })
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 if __name__ == "__main__":

@@ -16,8 +16,9 @@ from apscheduler.events import EVENT_JOB_ERROR
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from alerts import is_duplicate, send_alert
+from alerts import is_duplicate, send_alert, send_email
 from config import PORTFOLIO_SIZE, TIMEZONE
+from qqq_signal import build_qqq_email, get_qqq_signal, load_previous_state, save_state
 from database import init_db, mark_pending_close
 from portfolio import (
     check_stops,
@@ -175,6 +176,35 @@ def run_exit_scan() -> None:
     logger.info("Completed run_exit_scan in %.1fs", time.monotonic() - started)
 
 
+def run_qqq_signal(timing: str) -> None:
+    """QQQ EMA-10 state email — called at three times daily (CST/CDT).
+
+    timing:
+      "morning"  — 9:00 AM CST, based on yesterday's confirmed close
+      "preclose" — 2:30 PM CST, intraday advisory 30 min before close
+      "close"    — 4:15 PM CST, confirmed close (authoritative); also
+                   saves state so tomorrow detects SWITCH vs STAY
+    """
+    if not is_market_open():
+        return
+
+    try:
+        signal     = get_qqq_signal()
+        prev_state = load_previous_state()
+        subject, body = build_qqq_email(signal, prev_state, timing=timing)
+        send_email(subject, body)
+
+        if timing == "close":
+            save_state(signal["state"])
+
+        logger.info(
+            "QQQ [%s] signal=%s prev=%s price=%.2f ema10=%.2f",
+            timing, signal["state"], prev_state, signal["price"], signal["ema10"],
+        )
+    except Exception as exc:
+        logger.error("run_qqq_signal [%s] failed: %s", timing, exc)
+
+
 def on_job_error(event) -> None:
     """APScheduler error listener — logs and alerts on any job exception."""
     logger.error("Job %s failed: %s", event.job_id, event.exception)
@@ -187,6 +217,25 @@ def build_scheduler() -> BackgroundScheduler:
     scheduler.add_job(run_entry_scan, CronTrigger(day_of_week="mon-fri", hour=10, minute=0), id="entry_scan")
     scheduler.add_job(run_retest_scan, CronTrigger(day_of_week="mon-fri", hour=14, minute=0), id="retest_scan")
     scheduler.add_job(run_exit_scan, CronTrigger(day_of_week="mon-fri", hour=15, minute=50), id="exit_scan")
+    # QQQ EMA-10 cycle: three daily emails (all America/Chicago = CST/CDT)
+    # 9:00 AM — morning brief (yesterday's confirmed close, act at open)
+    scheduler.add_job(
+        run_qqq_signal, args=["morning"],
+        trigger=CronTrigger(day_of_week="mon-fri", hour=9, minute=0, timezone="America/Chicago"),
+        id="qqq_morning",
+    )
+    # 2:30 PM — pre-close advisory (intraday reading, 30 min before close)
+    scheduler.add_job(
+        run_qqq_signal, args=["preclose"],
+        trigger=CronTrigger(day_of_week="mon-fri", hour=14, minute=30, timezone="America/Chicago"),
+        id="qqq_preclose",
+    )
+    # 4:15 PM — final confirmed close signal (authoritative, saves state)
+    scheduler.add_job(
+        run_qqq_signal, args=["close"],
+        trigger=CronTrigger(day_of_week="mon-fri", hour=16, minute=15, timezone="America/Chicago"),
+        id="qqq_close",
+    )
     scheduler.add_listener(on_job_error, EVENT_JOB_ERROR)
     return scheduler
 

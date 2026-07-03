@@ -65,7 +65,7 @@ def _send_email_raw(subject: str, body: str) -> tuple[bool, str | None]:
 
     _rate_limit()
     try:
-        msg = MIMEText(body)
+        msg = MIMEText(body, 'plain', 'utf-8')
         msg["Subject"] = subject
         msg["From"] = EMAIL_ADDRESS
         msg["To"] = ALERT_TO_EMAIL
