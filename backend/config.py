@@ -92,7 +92,10 @@ DATABASE_URL = os.environ.get("DATABASE_URL") or f"sqlite:///{BASE_DIR / 'data' 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 # Resend's shared sandbox sender — only deliverable to the email that
 # owns the Resend account unless/until a custom domain is verified there.
-RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "onboarding@resend.dev")
+# `or`, not get(key, default) — same present-but-empty gotcha as
+# DATABASE_URL above: a blank RESEND_FROM_EMAIL= in Render's dashboard
+# resolves to "" (not absent), which would send an invalid "from" address.
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL") or "onboarding@resend.dev"
 ALERT_TO_EMAIL = os.environ.get("ALERT_TO_EMAIL", "")
 
 # ── Scheduler ─────────────────────────────────────────────────────────────
