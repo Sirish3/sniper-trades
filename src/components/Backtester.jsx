@@ -6,6 +6,7 @@ import {
 import { fetchDailyBars } from '../utils/marketData'
 import { runQQQCycleBacktest, getSignalPeriods } from '../utils/backtester'
 import { emaSeries } from '../utils/indicators'
+import TradingViewWidget from './TradingViewWidget'
 
 const EMA_OPTIONS = [
   { label: 'Price',    period: null },
@@ -179,6 +180,8 @@ export default function Backtester() {
           </button>
         </div>
       </div>
+
+      <TradingViewWidget symbol="NASDAQ:QQQ" height={550} />
 
       {/* ── Backtest ── */}
       <div className="bt-section-divider"><span>Backtest</span></div>
