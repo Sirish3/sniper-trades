@@ -76,9 +76,14 @@ def _send_email_raw(subject: str, body: str) -> tuple[bool, str | None]:
             },
             timeout=10,
         )
-        response.raise_for_status()
-        message_id = response.json().get("id")
+        if not response.ok:
+            # requests' raise_for_status() only gives the status line, not
+            # Resend's actual error body (e.g. why a 403/422 happened) —
+            # log both so failures are diagnosable from Render's logs alone.
+            logger.error("Email failed: %s %s — %s", response.status_code, response.reason, response.text)
+            return False, None
 
+        message_id = response.json().get("id")
         logger.info("Email sent: %s", subject)
         return True, message_id
     except Exception as exc:
