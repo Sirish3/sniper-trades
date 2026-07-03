@@ -12,9 +12,12 @@ from __future__ import annotations
 import logging
 import time
 
+from datetime import datetime
+
 from apscheduler.events import EVENT_JOB_ERROR
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 
 from alerts import is_duplicate, send_alert, send_email
 from config import PORTFOLIO_SIZE, TIMEZONE
@@ -205,6 +208,23 @@ def run_qqq_signal(timing: str) -> None:
         logger.error("run_qqq_signal [%s] failed: %s", timing, exc)
 
 
+def run_qqq_signal_test_TEMP(timing: str) -> None:
+    """TEMPORARY — one-off manual test of the scheduler->email path, added
+    2026-07-03. Skips is_market_open() (today is an NYSE holiday, so the
+    real run_qqq_signal would silently no-op) to actually prove APScheduler
+    fires jobs and delivers email correctly in production. Remove this
+    function and its job registration in build_scheduler() once confirmed.
+    """
+    try:
+        signal     = get_qqq_signal()
+        prev_state = load_previous_state()
+        subject, body = build_qqq_email(signal, prev_state, timing=timing)
+        send_email(f"[SCHEDULER TEST] {subject}", body)
+        logger.info("TEST run_qqq_signal [%s] signal=%s prev=%s price=%.2f", timing, signal["state"], prev_state, signal["price"])
+    except Exception as exc:
+        logger.error("TEST run_qqq_signal [%s] failed: %s", timing, exc)
+
+
 def on_job_error(event) -> None:
     """APScheduler error listener — logs and alerts on any job exception."""
     logger.error("Job %s failed: %s", event.job_id, event.exception)
@@ -235,6 +255,12 @@ def build_scheduler() -> BackgroundScheduler:
         run_qqq_signal, args=["close"],
         trigger=CronTrigger(day_of_week="mon-fri", hour=16, minute=15, timezone="America/Chicago"),
         id="qqq_close",
+    )
+    # TEMPORARY — remove after the 2026-07-03 test run (see run_qqq_signal_test_TEMP)
+    scheduler.add_job(
+        run_qqq_signal_test_TEMP, args=["close"],
+        trigger=DateTrigger(run_date=datetime(2026, 7, 3, 12, 50, 0), timezone="America/Chicago"),
+        id="TEMP_test_qqq",
     )
     scheduler.add_listener(on_job_error, EVENT_JOB_ERROR)
     return scheduler
