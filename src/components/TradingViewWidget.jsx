@@ -39,44 +39,75 @@ export default function TradingViewWidget({
   const widgetId = containerId || `tv_widget_${reactId}`
   const containerRef = useRef(null)
   const [ready, setReady] = useState(false)
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     setReady(false)
+    setFailed(false)
 
-    loadTradingViewScript().then(() => {
-      if (cancelled || !containerRef.current) return
+    // The script can hang instead of erroring outright (blocked by a
+    // content/ad blocker, flaky network, etc.) — without this, a failure
+    // leaves the skeleton spinning forever with no feedback.
+    const timeout = setTimeout(() => {
+      if (!cancelled) setFailed(true)
+    }, 10000)
 
-      const widget = new window.TradingView.widget({
-        autosize: true,
-        symbol,
-        interval,
-        timezone: 'Etc/UTC',
-        theme: 'dark',
-        style: '1',
-        locale: 'en',
-        toolbar_bg: '#13161e',
-        enable_publishing: false,
-        // Shows the built-in 1D/1M/3M/YTD/1Y/5Y/ALL range toolbar.
-        withdateranges: true,
-        range: '12M',
-        allow_symbol_change: true,
-        studies,
-        studies_overrides: studiesOverrides,
-        container_id: widgetId,
+    loadTradingViewScript()
+      .then(() => {
+        if (cancelled || !containerRef.current) return
+
+        const widget = new window.TradingView.widget({
+          autosize: true,
+          symbol,
+          interval,
+          timezone: 'Etc/UTC',
+          theme: 'dark',
+          style: '1',
+          locale: 'en',
+          toolbar_bg: '#13161e',
+          enable_publishing: false,
+          // Shows the built-in 1D/1M/3M/YTD/1Y/5Y/ALL range toolbar.
+          withdateranges: true,
+          range: '12M',
+          allow_symbol_change: true,
+          studies,
+          studies_overrides: studiesOverrides,
+          container_id: widgetId,
+        })
+
+        widget.onChartReady(() => {
+          clearTimeout(timeout)
+          if (!cancelled) setReady(true)
+        })
+      })
+      .catch(() => {
+        clearTimeout(timeout)
+        if (!cancelled) setFailed(true)
       })
 
-      widget.onChartReady(() => {
-        if (!cancelled) setReady(true)
-      })
-    })
-
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      clearTimeout(timeout)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol, interval, widgetId, JSON.stringify(studies), JSON.stringify(studiesOverrides)])
 
+  const heightVar = { '--tv-height': `${height}px` }
+
+  if (failed) {
+    return (
+      <div className="tv-widget-wrap tv-widget-fallback" style={heightVar}>
+        <span>Chart failed to load.</span>
+        <a href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`} target="_blank" rel="noopener noreferrer">
+          View {symbol} on TradingView →
+        </a>
+      </div>
+    )
+  }
+
   return (
-    <div className="tv-widget-wrap" style={{ height }}>
+    <div className="tv-widget-wrap" style={heightVar}>
       {!ready && <div className="tv-widget-skeleton" />}
       <div id={widgetId} ref={containerRef} className="tv-widget-container" style={{ visibility: ready ? 'visible' : 'hidden' }} />
     </div>

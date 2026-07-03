@@ -2757,9 +2757,27 @@
 .tv-widget-wrap {
   position: relative;
   width: 100%;
+  /* Shrinks on short/narrow viewports (phones) instead of forcing the
+     fixed desktop height, which left little room for anything else. */
+  height: clamp(320px, 60vh, var(--tv-height, 550px));
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--border);
+}
+
+.tv-widget-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  background: var(--surface);
+}
+
+.tv-widget-fallback a {
+  color: var(--blue);
 }
 
 .tv-widget-container {
@@ -2774,6 +2792,24 @@
   inset: 0;
   background: var(--surface-2);
   animation: pulse 1.2s ease-in-out infinite;
+}
+
+@media (max-width: 600px) {
+  .qqq-state-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.85rem;
+  }
+
+  .qqq-state-actions {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .tv-widget-wrap {
+    height: clamp(260px, 50vh, var(--tv-height, 550px));
+  }
 }
 
 /* section divider between state and backtest */
