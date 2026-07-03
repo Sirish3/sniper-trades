@@ -14,7 +14,14 @@ export default function TradingViewWidget({
   symbol = 'NASDAQ:QQQ',
   interval = 'D',
   studies = ['MAExp@tv-basicstudies'],
-  studiesOverrides = { 'moving average exponential.length': 10 },
+  studiesOverrides = {
+    'moving average exponential.length': 10,
+    'moving average exponential.plot.color': '#ff4c4c', // red, matches --red
+  },
+  overrides = {
+    'mainSeriesProperties.lineStyle.color': '#00c896', // green, matches --green
+    'mainSeriesProperties.lineStyle.linewidth': 2,
+  },
   height = 550,
   containerId,
 }) {
@@ -50,6 +57,7 @@ export default function TradingViewWidget({
       allow_symbol_change: true,
       studies,
       studies_overrides: studiesOverrides,
+      overrides,
       support_host: 'https://www.tradingview.com',
     }
 
@@ -80,7 +88,7 @@ export default function TradingViewWidget({
       clearTimeout(timeout)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol, interval, widgetId, JSON.stringify(studies), JSON.stringify(studiesOverrides)])
+  }, [symbol, interval, widgetId, JSON.stringify(studies), JSON.stringify(studiesOverrides), JSON.stringify(overrides)])
 
   const heightVar = { '--tv-height': `${height}px` }
 
