@@ -1,10 +1,12 @@
 """Syncs the S&P 500 / Nasdaq 100 membership lists from Wikipedia (the
 "Refresh" button's actual job — re-pull current index membership, not just
-reload a static snapshot). Falls back to this repo's existing static
-ticker files (backend/data/sp500.json, nasdaq100.json — the same files
-the main React app uses) if the live scrape fails, so a Wikipedia layout
-change or a network hiccup doesn't leave the screener with an empty
-universe.
+reload a static snapshot). Falls back to a static snapshot (data/*.json,
+this service's own copy of backend/data/*.json — duplicated rather than
+read via a ../backend/data relative path, since Render's Docker build for
+this service is scoped to this directory alone and wouldn't have backend/
+in its build context at all) if the live scrape fails, so a Wikipedia
+layout change or a network hiccup doesn't leave the screener with an
+empty universe.
 """
 from __future__ import annotations
 
@@ -22,8 +24,8 @@ NASDAQ100_URL = "https://en.wikipedia.org/wiki/Nasdaq-100"
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; swing-trade-scanner/1.0)"}
 
 STATIC_FALLBACK = {
-    "sp500": Path(__file__).parent.parent / "backend" / "data" / "sp500.json",
-    "nasdaq100": Path(__file__).parent.parent / "backend" / "data" / "nasdaq100.json",
+    "sp500": Path(__file__).parent / "data" / "sp500.json",
+    "nasdaq100": Path(__file__).parent / "data" / "nasdaq100.json",
 }
 
 

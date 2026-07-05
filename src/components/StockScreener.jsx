@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 
-// Calls the stock_screener Flask API (proxied via Vite's
-// '/stock-screener-api' rule in dev — see vite.config.js). That service
-// must be running separately: `python api.py` inside stock_screener/.
-const API_BASE = '/stock-screener-api'
+// Calls the stock_screener Flask API. In dev, the relative path is
+// proxied by Vite's '/stock-screener-api' rule (see vite.config.js) to a
+// locally-running `python api.py`. In production, Vite's dev proxy
+// doesn't exist — VITE_STOCK_SCREENER_API_URL (baked in at build time,
+// see render.yaml) points directly at the deployed service instead, and
+// the service's own CORS headers (api.py) allow the cross-origin call.
+const API_BASE = import.meta.env.VITE_STOCK_SCREENER_API_URL || '/stock-screener-api'
 
 const UNIVERSES = [
   { key: 'sp500', label: 'S&P 500' },

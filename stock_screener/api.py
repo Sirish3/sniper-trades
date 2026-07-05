@@ -1,9 +1,14 @@
 """Flask API for the React "Screener" tab (proxied in dev via Vite's
-'/stock-screener-api' rule — see vite.config.js). Standalone process,
-separate from the other Python services in this repo — run with:
+'/stock-screener-api' rule — see vite.config.js; called directly by an
+absolute URL cross-origin in production, since Vite's dev proxy has no
+effect on a built app — see src/components/StockScreener.jsx and this
+repo's render.yaml). Standalone process, separate from the other Python
+services in this repo — run with:
     python api.py
 """
 from __future__ import annotations
+
+import os
 
 from flask import Flask, jsonify, request
 
@@ -14,6 +19,35 @@ from universe_sync import load_static_fallback, sync_universe
 app = Flask(__name__)
 
 VALID_UNIVERSES = {"sp500", "nasdaq100", "custom"}
+
+# Browser-facing endpoints below are called cross-origin from the React app
+# in production (this service's own Render URL vs. stockpilot.cc) via
+# fetch(), not from a same-origin proxy — so the browser enforces CORS.
+# Matches backend/app.py's existing pattern.
+ALLOWED_ORIGINS = {"https://stockpilot.cc", "http://localhost:5173", "http://localhost:5174"}
+
+
+@app.after_request
+def add_cors_headers(response):
+    origin = request.headers.get("Origin")
+    if origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
+
+@app.route("/api/universe/<universe>/refresh", methods=["OPTIONS"])
+@app.route("/api/universe/custom/add", methods=["OPTIONS"])
+@app.route("/api/universe/custom/remove", methods=["OPTIONS"])
+@app.route("/api/screen", methods=["OPTIONS"])
+def cors_preflight(**_kwargs):
+    return "", 204
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
 
 
 def _ensure_seeded(universe: str) -> None:
@@ -108,4 +142,4 @@ def screen():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8004)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8004)))

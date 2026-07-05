@@ -5,10 +5,13 @@ import {
 } from 'recharts'
 import MetricCard from './MetricCard'
 
-// Calls the swing_scanner Flask API (proxied via Vite's
-// '/swing-scanner-api' rule in dev — see vite.config.js). That service
-// must be running separately: `python api.py` inside swing_scanner/.
-const API_BASE = '/swing-scanner-api'
+// Calls the swing_scanner Flask API. In dev, the relative path is proxied
+// by Vite's '/swing-scanner-api' rule (see vite.config.js) to a locally-
+// running `python api.py`. In production, Vite's dev proxy doesn't exist —
+// VITE_SWING_SCANNER_API_URL (baked in at build time, see render.yaml)
+// points directly at the deployed service instead, and the service's own
+// CORS headers (api.py) allow the cross-origin call.
+const API_BASE = import.meta.env.VITE_SWING_SCANNER_API_URL || '/swing-scanner-api'
 
 function fmtMoney(value) {
   return value == null ? '—' : `$${value.toFixed(2)}`

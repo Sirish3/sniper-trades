@@ -17,3 +17,48 @@ services:
         sync: false
       - key: ALERT_TO_EMAIL
         sync: false
+
+  # Swing scanner (Trend Template + VCP) API — backs the React "Scanner"
+  # tab. Free tier is fine here (unlike the scheduler above): nothing needs
+  # to run on a schedule, spinning down on idle just means the first
+  # request after a while is slow, not broken.
+  - type: web
+    name: sniper-trades-swing-scanner
+    runtime: docker
+    rootDir: swing_scanner
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ALPACA_KEY_ID
+        sync: false
+      - key: ALPACA_SECRET_KEY
+        sync: false
+      - key: ALPACA_BASE_URL
+        value: https://paper-api.alpaca.markets
+      - key: ALPACA_DATA_URL
+        value: https://data.alpaca.markets/v2/stocks
+
+  # Stock screener (S&P 500 / Nasdaq 100 / custom list) API — backs the
+  # React "Screener" tab. Same Neon Postgres instance as the scheduler
+  # above (screener_tickers / screener_fundamentals_cache tables) — set
+  # DATABASE_URL to the SAME value as sniper-trades-scheduler's, not a
+  # different database.
+  - type: web
+    name: sniper-trades-stock-screener
+    runtime: docker
+    rootDir: stock_screener
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ALPACA_KEY_ID
+        sync: false
+      - key: ALPACA_SECRET_KEY
+        sync: false
+      - key: ALPACA_DATA_URL
+        value: https://data.alpaca.markets/v2/stocks
+      - key: FINNHUB_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false # same Neon instance as sniper-trades-scheduler

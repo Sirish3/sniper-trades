@@ -1,14 +1,17 @@
 """Flask API for the React "Swing Scanner" tab (proxied in dev via Vite's
-'/swing-scanner-api' rule — see vite.config.js). Wraps the same
-pipeline.py used by the Streamlit app (app.py) — the scan logic itself
-lives in exactly one place regardless of which frontend calls it.
-Standalone process, separate from the other Python services in this repo
-— run with:
+'/swing-scanner-api' rule — see vite.config.js; called directly by an
+absolute URL cross-origin in production, since Vite's dev proxy has no
+effect on a built app — see src/components/SwingScanner.jsx and this
+repo's render.yaml). Wraps the same pipeline.py used by the Streamlit app
+(app.py) — the scan logic itself lives in exactly one place regardless of
+which frontend calls it. Standalone process, separate from the other
+Python services in this repo — run with:
     python api.py
 """
 from __future__ import annotations
 
 import math
+import os
 
 import pandas as pd
 from flask import Flask, jsonify, request
@@ -21,6 +24,33 @@ from pipeline import TEST_SUBSET, run_scan
 app = Flask(__name__)
 
 CHART_LOOKBACK_DAYS = 260
+
+# Browser-facing endpoints below are called cross-origin from the React app
+# in production (this service's own Render URL vs. stockpilot.cc) via
+# fetch(), not from a same-origin proxy — so the browser enforces CORS.
+# Matches backend/app.py's existing pattern.
+ALLOWED_ORIGINS = {"https://stockpilot.cc", "http://localhost:5173", "http://localhost:5174"}
+
+
+@app.after_request
+def add_cors_headers(response):
+    origin = request.headers.get("Origin")
+    if origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
+
+@app.route("/api/scan", methods=["OPTIONS"])
+@app.route("/api/position-size", methods=["OPTIONS"])
+def cors_preflight():
+    return "", 204
+
+
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
 
 # Maps the pipeline's Streamlit-display column names to the camelCase keys
 # the React tab actually consumes.
@@ -119,4 +149,4 @@ def position_size_endpoint():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8003)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8003)))
