@@ -24,12 +24,12 @@ export const THRESHOLDS = {
   // Earnings buffer (verdict.js) — mirrors stockAnalysis.js's
   // EARNINGS_BLOCK_DAYS, the canonical "too close to earnings" cutoff.
   // Only a CONFIRMED earnings date is held to this real threshold.
-  // Source-provider-agnostic: earningsProvider.js (currently a yfinance
-  // microservice client — see earnings_service/) only has to return
-  // { date, daysAway, source }; the cache TTL, request politeness, and
-  // self-estimate cadence/tolerance for THAT provider live in
-  // earnings_service.py's own config block, not here, since they're
-  // specific to whatever sits behind the swappable interface.
+  // Source-provider-agnostic: earningsProvider.js (currently a direct
+  // Finnhub client) only has to return { date, daysAway, source }; the
+  // confirmed-window size, self-estimate cadence/tolerance, and report-lag
+  // approximation for THAT provider live in earningsProvider.js's own
+  // constants, not here, since they're specific to whatever sits behind
+  // the swappable interface.
   earningsBufferDays: 7,
   // An ESTIMATED date (self-estimated, or provider-returned but not
   // confirmed) carries ~±2-week real-world error, so every threshold that

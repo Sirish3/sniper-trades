@@ -1,100 +1,147 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { getEarningsMap } from './earningsProvider'
+import { fetchFinnhub } from './finnhubApi'
 
-const ORIGINAL_FETCH = globalThis.fetch
+vi.mock('./finnhubApi', () => ({ fetchFinnhub: vi.fn() }))
+
+function isoDaysFromToday(days) {
+  const d = new Date()
+  d.setUTCHours(0, 0, 0, 0)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+// The confirmed-calendar window is fetched in several date-range chunks
+// (see earningsProvider.js's ASSUMPTION FLAGGED note re: Finnhub's ~1500-row
+// truncation cap), so tests mock by URL shape rather than call order/count:
+// every /calendar/earnings chunk request gets the same full entry list
+// (harmless — merging is idempotent), and /stock/earnings requests are
+// routed by the `symbol` query param.
+function mockFinnhub({ calendarEntries = [], historyBySymbol = {} } = {}) {
+  fetchFinnhub.mockImplementation(async (path) => {
+    if (path.startsWith('/calendar/earnings')) {
+      return { earningsCalendar: calendarEntries }
+    }
+    const symbol = path.match(/symbol=([^&]+)/)?.[1]
+    return historyBySymbol[symbol] ?? []
+  })
+}
+
+function calendarCallCount() {
+  return fetchFinnhub.mock.calls.filter(([path]) => path.startsWith('/calendar/earnings')).length
+}
+
+function historyCallsFor(symbol) {
+  return fetchFinnhub.mock.calls.filter(([path]) => path.includes(`/stock/earnings?symbol=${symbol}`))
+}
 
 beforeEach(() => {
   vi.spyOn(console, 'info').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
+  fetchFinnhub.mockReset()
 })
 
-afterEach(() => {
-  globalThis.fetch = ORIGINAL_FETCH
-  vi.restoreAllMocks()
-})
+describe('getEarningsMap — confirmed calendar (chunked market-wide calls, never per-ticker)', () => {
+  it('finds a scheduled date for every ticker present in the calendar, with no per-ticker history calls', async () => {
+    const dateStr = isoDaysFromToday(9)
+    mockFinnhub({ calendarEntries: [{ symbol: 'AAPL', date: dateStr }, { symbol: 'MSFT', date: dateStr }] })
 
-function mockFetchOnce(body, { ok = true, status = 200 } = {}) {
-  globalThis.fetch = vi.fn().mockResolvedValue({
-    ok,
-    status,
-    json: async () => body,
-  })
-}
+    const map = await getEarningsMap(['AAPL', 'MSFT'])
 
-describe('getEarningsMap — batching (ONE request per scan, never per-ticker)', () => {
-  it('a 50-ticker scan makes exactly ONE request to the earnings service', async () => {
-    const tickers = Array.from({ length: 50 }, (_, i) => `T${i}`)
-    mockFetchOnce({ T0: { date: '2099-01-10', source: 'CONFIRMED' } })
-
-    await getEarningsMap(tickers)
-
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    expect(map.AAPL).toEqual({ date: dateStr, daysAway: 9, source: 'CONFIRMED' })
+    expect(map.MSFT.source).toBe('CONFIRMED')
+    expect(historyCallsFor('AAPL')).toHaveLength(0)
+    expect(historyCallsFor('MSFT')).toHaveLength(0)
   })
 
-  it('every requested ticker is included in the result, including ones the service has no entry for', async () => {
-    mockFetchOnce({ PRESENT: { date: '2099-01-10', source: 'CONFIRMED' } })
+  it('makes more than one calendar request (chunked, not a single wide request)', async () => {
+    mockFinnhub({ calendarEntries: [] })
 
-    const map = await getEarningsMap(['PRESENT', 'MISSING'])
+    await getEarningsMap(['AAPL'])
 
-    expect(map.PRESENT.source).toBe('CONFIRMED')
-    expect(map.MISSING).toEqual({ date: null, daysAway: null, source: 'UNKNOWN' })
+    // The exact count is an implementation detail (window size / chunk size),
+    // but it must be MORE than 1 — a single wide request is exactly the bug
+    // that silently dropped near-term dates (see module docstring).
+    expect(calendarCallCount()).toBeGreaterThan(1)
   })
 
-  it('requests a comma-joined symbols query param', async () => {
-    mockFetchOnce({})
-
-    await getEarningsMap(['AAPL', 'MSFT', 'WMB'])
-
-    const url = globalThis.fetch.mock.calls[0][0]
-    expect(url).toContain('symbols=AAPL,MSFT,WMB')
-  })
-
-  it('returns an empty map without calling fetch for an empty ticker list', async () => {
-    globalThis.fetch = vi.fn()
-
+  it('returns an empty map without calling fetchFinnhub for an empty ticker list', async () => {
     const map = await getEarningsMap([])
 
     expect(map).toEqual({})
-    expect(globalThis.fetch).not.toHaveBeenCalled()
+    expect(fetchFinnhub).not.toHaveBeenCalled()
   })
-})
 
-describe('getEarningsMap — source tagging passthrough', () => {
-  it('CONFIRMED entries compute a correct daysAway from the returned date', async () => {
-    const today = new Date()
-    today.setUTCHours(0, 0, 0, 0)
-    const future = new Date(today)
-    future.setUTCDate(future.getUTCDate() + 9)
-    const dateStr = future.toISOString().slice(0, 10)
-    mockFetchOnce({ AAPL: { date: dateStr, source: 'CONFIRMED' } })
+  it('ignores a calendar entry dated in the past (already reported, nothing new scheduled)', async () => {
+    mockFinnhub({ calendarEntries: [{ symbol: 'AAPL', date: isoDaysFromToday(-5) }], historyBySymbol: {} })
 
     const map = await getEarningsMap(['AAPL'])
 
-    expect(map.AAPL.source).toBe('CONFIRMED')
-    expect(map.AAPL.daysAway).toBe(9)
+    expect(map.AAPL).toEqual({ date: null, daysAway: null, source: 'UNKNOWN' })
+  })
+})
+
+describe('getEarningsMap — ESTIMATED fallback (per-symbol history, only for tickers missing a confirmed date)', () => {
+  it('estimates from historical quarter-end dates when no confirmed date is found', async () => {
+    mockFinnhub({
+      calendarEntries: [],
+      historyBySymbol: {
+        AAPL: [
+          { period: '2025-12-31' },
+          { period: '2025-09-30' },
+          { period: '2025-06-30' },
+          { period: '2025-03-31' },
+        ],
+      },
+    })
+
+    const map = await getEarningsMap(['AAPL'])
+
+    expect(map.AAPL.source).toBe('ESTIMATED')
+    expect(map.AAPL.date).not.toBeNull()
+    expect(typeof map.AAPL.daysAway).toBe('number')
+    expect(historyCallsFor('AAPL')).toHaveLength(1)
   })
 
-  it('ESTIMATED entries pass the source through with a computed daysAway', async () => {
-    mockFetchOnce({ XYZ: { date: '2099-01-10', source: 'ESTIMATED' } })
-
-    const map = await getEarningsMap(['XYZ'])
-
-    expect(map.XYZ.source).toBe('ESTIMATED')
-    expect(typeof map.XYZ.daysAway).toBe('number')
-  })
-
-  it('a service-tagged UNKNOWN entry (date null) stays UNKNOWN with no daysAway', async () => {
-    mockFetchOnce({ NODATA: { date: null, source: 'UNKNOWN' } })
+  it('a ticker with no earnings history at all degrades to UNKNOWN', async () => {
+    mockFinnhub({ calendarEntries: [], historyBySymbol: {} })
 
     const map = await getEarningsMap(['NODATA'])
 
     expect(map.NODATA).toEqual({ date: null, daysAway: null, source: 'UNKNOWN' })
   })
+
+  it('only fetches history for tickers missing a confirmed date, not ones already CONFIRMED', async () => {
+    const dateStr = isoDaysFromToday(20)
+    mockFinnhub({
+      calendarEntries: [{ symbol: 'AAPL', date: dateStr }],
+      historyBySymbol: { MSFT: [{ period: '2025-12-31' }, { period: '2025-09-30' }] },
+    })
+
+    const map = await getEarningsMap(['AAPL', 'MSFT'])
+
+    expect(map.AAPL.source).toBe('CONFIRMED')
+    expect(map.MSFT.source).toBe('ESTIMATED')
+    expect(historyCallsFor('AAPL')).toHaveLength(0)
+    expect(historyCallsFor('MSFT')).toHaveLength(1)
+  })
 })
 
-describe('getEarningsMap — graceful degradation (service unreachable)', () => {
-  it('a network failure degrades every ticker to UNKNOWN, never throws', async () => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('fetch failed'))
+describe('getEarningsMap — graceful degradation (Finnhub unreachable)', () => {
+  it('a confirmed-calendar failure falls through to per-symbol estimation instead of failing the whole scan', async () => {
+    fetchFinnhub.mockImplementation(async (path) => {
+      if (path.startsWith('/calendar/earnings')) throw new TypeError('fetch failed')
+      return [{ period: '2025-12-31' }, { period: '2025-09-30' }]
+    })
+
+    const map = await getEarningsMap(['AAPL'])
+
+    expect(map.AAPL.source).toBe('ESTIMATED')
+    expect(console.error).toHaveBeenCalled()
+  })
+
+  it('total Finnhub failure (calendar and per-symbol history both fail) degrades to UNKNOWN, never throws', async () => {
+    fetchFinnhub.mockRejectedValue(new TypeError('fetch failed'))
 
     const map = await getEarningsMap(['AAPL', 'MSFT'])
 
@@ -104,28 +151,8 @@ describe('getEarningsMap — graceful degradation (service unreachable)', () => 
     })
   })
 
-  it('a network failure logs loudly so degradation is never silent', async () => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('fetch failed'))
-
-    await getEarningsMap(['AAPL'])
-
-    expect(console.error).toHaveBeenCalled()
-  })
-
-  it('a non-200 response degrades every ticker to UNKNOWN, never throws', async () => {
-    mockFetchOnce({}, { ok: false, status: 500 })
-
-    const map = await getEarningsMap(['AAPL'])
-
-    expect(map.AAPL).toEqual({ date: null, daysAway: null, source: 'UNKNOWN' })
-  })
-
-  it('a malformed (non-JSON-parseable) response degrades every ticker to UNKNOWN, never throws', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => { throw new SyntaxError('Unexpected token') },
-    })
+  it('fetchFinnhub returning null (its own "unavailable" signal) degrades to UNKNOWN, never throws', async () => {
+    fetchFinnhub.mockResolvedValue(null)
 
     const map = await getEarningsMap(['AAPL'])
 
