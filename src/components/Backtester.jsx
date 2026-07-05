@@ -6,7 +6,9 @@ import {
 import { fetchDailyBars } from '../utils/marketData'
 import { runQQQCycleBacktest, getSignalPeriods } from '../utils/backtester'
 import { emaSeries } from '../utils/indicators'
+import { fmt, sign } from '../utils/backtestFormat'
 import TradingViewWidget from './TradingViewWidget'
+import MetricCard from './MetricCard'
 
 const EMA_OPTIONS = [
   { label: 'Price',    period: null },
@@ -29,24 +31,6 @@ const PERIODS = [
   { label: '3 Years', fetchDays: 1395, displayBars: 756  },
   { label: '5 Years', fetchDays: 2125, displayBars: 1260 },
 ]
-
-function fmt(val) {
-  return `$${Number(val).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-}
-
-function sign(val) {
-  return val >= 0 ? `+${val.toFixed(1)}%` : `${val.toFixed(1)}%`
-}
-
-function MetricCard({ label, value, up, down }) {
-  const cls = up ? ' bt-metric--up' : down ? ' bt-metric--down' : ''
-  return (
-    <div className={`bt-metric${cls}`}>
-      <div className="bt-metric-value">{value}</div>
-      <div className="bt-metric-label">{label}</div>
-    </div>
-  )
-}
 
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null

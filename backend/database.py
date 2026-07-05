@@ -129,8 +129,7 @@ class PortfolioSnapshot(Base):
     open_positions_count: Mapped[int] = mapped_column(Integer)
 
 
-_connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, connect_args=_connect_args)
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 

@@ -112,7 +112,13 @@ export function getInMarketPeriods(series) {
 }
 
 // QQQ EMA cycle strategy: rotates between TQQQ (bull) and SQQQ (bear)
-// based on whether the fast indicator is above the slow indicator on QQQ.
+// based on whether the fast indicator is above the slow indicator on QQQ's
+// closing price. Execution is modeled at the close too (a market-on-close
+// style fill), but lagged by one day — a signal computed FROM today's close
+// can't also be used to earn today's own close-to-close return (that's
+// circular: it assumes the fill happens before the price that produced the
+// signal existed). Instead, the position for today's leg is whatever was
+// already decided as of yesterday's close.
 // fastPeriod / slowPeriod: null = raw price, number = EMA period.
 // displayBars: trim the output to the last N bars and renormalize both series
 // to $10K at that start point — ensures "1 Year" really shows 1 year of data.
@@ -149,11 +155,13 @@ export function runQQQCycleBacktest(qqqBars, tqqqBars, sqqqBars, fastPeriod, slo
     const slow = slowArr[i]
     const sig  = (fast != null && slow != null) ? (fast > slow ? 'bull' : 'bear') : null
 
+    // Apply the position decided as of yesterday's close (currentSig) to
+    // today's return — using today's own signal here would be look-ahead
+    // bias, since today's close is what determines today's signal.
     if (j > 0) {
       const prevDate = qqqDates[aligned[j - 1]]
-      const eff = sig ?? currentSig
-      if (eff === 'bull') stratValue *= tqqqMap.get(date) / tqqqMap.get(prevDate)
-      else if (eff === 'bear') stratValue *= sqqqMap.get(date) / sqqqMap.get(prevDate)
+      if (currentSig === 'bull') stratValue *= tqqqMap.get(date) / tqqqMap.get(prevDate)
+      else if (currentSig === 'bear') stratValue *= sqqqMap.get(date) / sqqqMap.get(prevDate)
     }
 
     if (sig !== null) currentSig = sig

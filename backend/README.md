@@ -120,12 +120,10 @@ since free-tier policies change often**:
   "Starter" tier instead if you go this route.
 
 Either way: **one worker process only** (enforced in the `Dockerfile`'s
-`gunicorn --workers 1`). SQLite is the default DB (`backend/data/`) —
-fine for a single combined web+scheduler process on one persistent disk.
-If you later split the website and scheduler into two separate services,
-switch to a real network database (`DATABASE_URL` env var, e.g. a free
-Postgres from Supabase or Neon) since two separate containers can't share
-a local SQLite file.
+`gunicorn --workers 1`). The DB is Postgres only (`DATABASE_URL`, a free
+Neon instance) — required, no local SQLite fallback, which also means
+splitting the website and scheduler into separate services later needs no
+database migration (both would already point at the same network DB).
 
 ## Files
 

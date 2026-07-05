@@ -73,11 +73,10 @@ RISK_PCT = 0.015
 FOMC_DATES: list[str] = []
 
 # ── Database ──────────────────────────────────────────────────────────────
-# `.env`/.env.example declare DATABASE_URL= with a blank value (meant to
-# be optional) — os.environ.get(key, default) only falls back when the
-# key is *absent*, not when it's present-but-empty, so a blank .env line
-# would otherwise resolve to "" and break create_engine(). `or` handles both.
-DATABASE_URL = os.environ.get("DATABASE_URL") or f"sqlite:///{BASE_DIR / 'data' / 'scheduler.db'}"
+# Postgres (Neon) only — no local SQLite fallback. Must be set in .env.
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is required (Postgres/Neon) — set it in backend/.env. No local SQLite fallback.")
 
 # ── Alerts (Resend HTTP API) ──────────────────────────────────────────────
 # Twilio SMS was tried first and dropped: the only number on the account
