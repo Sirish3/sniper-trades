@@ -4,8 +4,11 @@ import { useEffect, useState } from 'react'
 // proxied by Vite's '/stock-screener-api' rule (see vite.config.js) to a
 // locally-running `python api.py`. In production, Vite's dev proxy
 // doesn't exist — VITE_STOCK_SCREENER_API_URL (baked in at build time,
-// see render.yaml) points directly at the deployed service instead, and
-// the service's own CORS headers (api.py) allow the cross-origin call.
+// see render.yaml) points directly at the deployed service instead: since
+// Render only gave us one free service slot, that's combined_service/
+// proxy.py's own URL plus a '/screener' prefix (e.g.
+// https://sniper-trades.onrender.com/screener), which it forwards
+// internally to this same api.py running as a subprocess.
 const API_BASE = import.meta.env.VITE_STOCK_SCREENER_API_URL || '/stock-screener-api'
 
 const UNIVERSES = [

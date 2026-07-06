@@ -9,8 +9,10 @@ import MetricCard from './MetricCard'
 // by Vite's '/swing-scanner-api' rule (see vite.config.js) to a locally-
 // running `python api.py`. In production, Vite's dev proxy doesn't exist —
 // VITE_SWING_SCANNER_API_URL (baked in at build time, see render.yaml)
-// points directly at the deployed service instead, and the service's own
-// CORS headers (api.py) allow the cross-origin call.
+// points directly at the deployed service instead: since Render only gave
+// us one free service slot, that's combined_service/proxy.py's own URL
+// plus a '/scanner' prefix (e.g. https://sniper-trades.onrender.com/scanner),
+// which it forwards internally to this same api.py running as a subprocess.
 const API_BASE = import.meta.env.VITE_SWING_SCANNER_API_URL || '/swing-scanner-api'
 
 function fmtMoney(value) {

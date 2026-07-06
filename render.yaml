@@ -18,15 +18,23 @@ services:
       - key: ALERT_TO_EMAIL
         sync: false
 
-  # Swing scanner (Trend Template + VCP) API — backs the React "Scanner"
-  # tab. Free tier is fine here (unlike the scheduler above): nothing needs
-  # to run on a schedule, spinning down on idle just means the first
-  # request after a while is slow, not broken.
+  # Combined Scanner + Screener API — backs both the React "Scanner" tab
+  # (swing_scanner: Trend Template + VCP) and "Screener" tab (stock_screener:
+  # S&P 500 / Nasdaq 100 / custom list). Only one free web service slot was
+  # available beyond the paid scheduler above, so both run as their own
+  # subprocesses behind combined_service/proxy.py rather than as two
+  # separate Render services — see that file for why (module-name
+  # collisions if imported into one process instead). `name` matches the
+  # already-existing manually-created service (sniper-trades.onrender.com)
+  # so this Blueprint adopts it instead of creating a new one.
+  #
+  # No `rootDir` here on purpose: the Dockerfile COPYs from swing_scanner/,
+  # stock_screener/, and combined_service/ as siblings, so the build
+  # context must stay the repo root.
   - type: web
-    name: sniper-trades-swing-scanner
+    name: sniper-trades
     runtime: docker
-    rootDir: swing_scanner
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./combined_service/Dockerfile
     plan: free
     healthCheckPath: /health
     envVars:
@@ -36,26 +44,6 @@ services:
         sync: false
       - key: ALPACA_BASE_URL
         value: https://paper-api.alpaca.markets
-      - key: ALPACA_DATA_URL
-        value: https://data.alpaca.markets/v2/stocks
-
-  # Stock screener (S&P 500 / Nasdaq 100 / custom list) API — backs the
-  # React "Screener" tab. Same Neon Postgres instance as the scheduler
-  # above (screener_tickers / screener_fundamentals_cache tables) — set
-  # DATABASE_URL to the SAME value as sniper-trades-scheduler's, not a
-  # different database.
-  - type: web
-    name: sniper-trades-stock-screener
-    runtime: docker
-    rootDir: stock_screener
-    dockerfilePath: ./Dockerfile
-    plan: free
-    healthCheckPath: /health
-    envVars:
-      - key: ALPACA_KEY_ID
-        sync: false
-      - key: ALPACA_SECRET_KEY
-        sync: false
       - key: ALPACA_DATA_URL
         value: https://data.alpaca.markets/v2/stocks
       - key: FINNHUB_API_KEY
