@@ -21,7 +21,6 @@ import { SP500 } from '../data/sp500'
 import { NASDAQ100 } from '../data/nasdaq100'
 import { ETFS_AND_METALS } from '../data/etfsAndMetals'
 import { getVerdict, bucketResultsByVerdict } from '../utils/verdict'
-import { loadPriceAlerts, savePriceAlerts, addPriceAlert } from '../utils/priceAlerts'
 import { LoaderIcon, TrendingUpIcon } from './Icons'
 import AnalysisPanel from './AnalysisPanel'
 import AvwapPanel from './AvwapPanel'
@@ -528,7 +527,7 @@ function BuyListSummary({ buckets, onSelect }) {
   )
 }
 
-function ResultCard({ result, expanded, onToggle, analysisOpen, onToggleAnalysis, portfolioSize, onSetAlert }) {
+function ResultCard({ result, expanded, onToggle, analysisOpen, onToggleAnalysis, portfolioSize }) {
   const r = result
   // Computed unconditionally (not gated on analysisOpen) since getVerdict()
   // needs it for every visible card, not just the expanded "Show Analysis"
@@ -684,22 +683,12 @@ function ResultCard({ result, expanded, onToggle, analysisOpen, onToggleAnalysis
                 <div className="result-stat">
                   <span className="result-stat-label">Entry</span>
                   <span className="result-stat-value mono">${r.tradePlan.entryPrice.toFixed(2)}</span>
-                  {onSetAlert && (
-                    <button type="button" className="btn refresh-btn" onClick={() => onSetAlert(r, { price: r.tradePlan.entryPrice, label: 'Entry' })}>
-                      Set Alert
-                    </button>
-                  )}
                 </div>
                 <div className="result-stat">
                   <span className="result-stat-label">Stop ({r.tradePlan.stopMethod})</span>
                   <span className="result-stat-value mono text-danger">
                     ${r.tradePlan.stopPrice.toFixed(2)} <span className="text-muted">(-{r.tradePlan.riskPct.toFixed(1)}%)</span>
                   </span>
-                  {onSetAlert && (
-                    <button type="button" className="btn refresh-btn" onClick={() => onSetAlert(r, { price: r.tradePlan.stopPrice, label: 'Stop' })}>
-                      Set Alert
-                    </button>
-                  )}
                 </div>
                 <div className="result-stat">
                   <span className="result-stat-label">Shares</span>
@@ -716,20 +705,10 @@ function ResultCard({ result, expanded, onToggle, analysisOpen, onToggleAnalysis
                 <div className="result-stat">
                   <span className="result-stat-label">Trim 1 (+1.5R, 25%)</span>
                   <span className="result-stat-value mono text-green">${r.tradePlan.trim1.price.toFixed(2)} · {r.tradePlan.trim1.shares} sh</span>
-                  {onSetAlert && (
-                    <button type="button" className="btn refresh-btn" onClick={() => onSetAlert(r, { price: r.tradePlan.trim1.price, label: 'Trim 1' })}>
-                      Set Alert
-                    </button>
-                  )}
                 </div>
                 <div className="result-stat">
                   <span className="result-stat-label">Trim 2 (+2.5R, 25%)</span>
                   <span className="result-stat-value mono text-green">${r.tradePlan.trim2.price.toFixed(2)} · {r.tradePlan.trim2.shares} sh</span>
-                  {onSetAlert && (
-                    <button type="button" className="btn refresh-btn" onClick={() => onSetAlert(r, { price: r.tradePlan.trim2.price, label: 'Trim 2' })}>
-                      Set Alert
-                    </button>
-                  )}
                 </div>
                 <div className="result-stat">
                   <span className="result-stat-label">Remaining (trail 2.5x ATR)</span>
@@ -837,14 +816,6 @@ function WeekHighScreener() {
   const [tradePlanError, setTradePlanError] = useState(null)
   const [expandedSymbol, setExpandedSymbol] = useState(null)
   const [analysisSymbol, setAnalysisSymbol] = useState(null)
-
-  const [priceAlerts, setPriceAlerts] = useState(() => loadPriceAlerts())
-
-  const handleSetAlert = (r, { price, label }) => {
-    const next = addPriceAlert(priceAlerts, { symbol: r.symbol, name: r.name, price, label })
-    setPriceAlerts(next)
-    savePriceAlerts(next)
-  }
 
   const toggleGroup = (id) => {
     setSelectedGroups((prev) => {
@@ -1249,7 +1220,6 @@ function WeekHighScreener() {
                   analysisOpen={analysisSymbol === r.symbol}
                   onToggleAnalysis={(symbol) => setAnalysisSymbol((prev) => (prev === symbol ? null : symbol))}
                   portfolioSize={portfolioSize}
-                  onSetAlert={handleSetAlert}
                 />
               ))}
             </div>
