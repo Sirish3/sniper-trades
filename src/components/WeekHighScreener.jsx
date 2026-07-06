@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getUniverseGroups } from '../utils/agenticScreener'
 import { getTotalStockMarketUniverse } from '../utils/assetUniverse'
-import { estimateScanMinutes } from '../utils/screener'
 import {
   scanWeekHighs, classifyWeekHighResults, buildWeekHighTradePlans, MAX_TRADE_PLAN_CANDIDATES,
 } from '../utils/weekHighScreener'
@@ -22,12 +21,10 @@ import { SP500 } from '../data/sp500'
 import { NASDAQ100 } from '../data/nasdaq100'
 import { ETFS_AND_METALS } from '../data/etfsAndMetals'
 import { getVerdict, bucketResultsByVerdict } from '../utils/verdict'
-import { loadPriceAlerts, savePriceAlerts, addPriceAlert, removePriceAlert } from '../utils/priceAlerts'
+import { loadPriceAlerts, savePriceAlerts, addPriceAlert } from '../utils/priceAlerts'
 import { LoaderIcon, TrendingUpIcon } from './Icons'
 import AnalysisPanel from './AnalysisPanel'
 import AvwapPanel from './AvwapPanel'
-import OpenPositions from './OpenPositions'
-import PriceAlerts from './PriceAlerts'
 import VerdictPanel from './VerdictPanel'
 
 const PORTFOLIO_STORAGE_KEY = 'sniper-trades-portfolio-size'
@@ -419,10 +416,6 @@ function formatPct(value) {
   if (value == null) return 'N/A'
   const sign = value >= 0 ? '+' : ''
   return `${sign}${value.toFixed(2)}%`
-}
-
-function formatEstimate(minutes) {
-  return minutes < 1 ? '< 1 min' : `~${minutes} min`
 }
 
 function matchesSearch(result, query) {
@@ -824,14 +817,9 @@ function WeekHighScreener() {
     }
   }
 
-  const [portfolioSize, setPortfolioSize] = useState(
+  const [portfolioSize] = useState(
     () => Number(localStorage.getItem(PORTFOLIO_STORAGE_KEY)) || DEFAULT_PORTFOLIO_SIZE
   )
-  const handlePortfolioSizeChange = (value) => {
-    const n = Number(value)
-    setPortfolioSize(n)
-    if (n > 0) localStorage.setItem(PORTFOLIO_STORAGE_KEY, String(n))
-  }
 
   const [signalFilter, setSignalFilter] = useState('actionable')
   const [gradeFilter, setGradeFilter] = useState(new Set())
@@ -858,12 +846,6 @@ function WeekHighScreener() {
     savePriceAlerts(next)
   }
 
-  const handleRemoveAlert = (id) => {
-    const next = removePriceAlert(priceAlerts, id)
-    setPriceAlerts(next)
-    savePriceAlerts(next)
-  }
-
   const toggleGroup = (id) => {
     setSelectedGroups((prev) => {
       const next = new Set(prev)
@@ -872,15 +854,6 @@ function WeekHighScreener() {
       return next
     })
   }
-
-  const selectedUnionSize = useMemo(() => {
-    const symbols = new Set()
-    for (const group of universeGroups) {
-      if (!selectedGroups.has(group.id)) continue
-      for (const company of group.companies) symbols.add(company.symbol)
-    }
-    return symbols.size
-  }, [universeGroups, selectedGroups])
 
   const handleScan = async () => {
     const groups = universeGroups.filter((g) => selectedGroups.has(g.id))
@@ -1107,27 +1080,6 @@ function WeekHighScreener() {
             )
           })}
         </div>
-
-        {selectedUnionSize > 0 && (
-          <p className="section-empty">
-            {selectedUnionSize.toLocaleString()} unique ticker{selectedUnionSize === 1 ? '' : 's'} selected
-            — est. {formatEstimate(estimateScanMinutes(selectedUnionSize))} due to API rate limits.
-          </p>
-        )}
-
-        <div className="filter-row">
-          <span className="filter-row-label">Portfolio size</span>
-          <input
-            type="number" min="1000" step="1000" className="settings-input"
-            value={portfolioSize}
-            onChange={(e) => handlePortfolioSizeChange(e.target.value)}
-          />
-          <span className="text-muted">drives trade-plan position sizing</span>
-        </div>
-
-        <OpenPositions />
-
-        <PriceAlerts alerts={priceAlerts} onRemove={handleRemoveAlert} />
 
         <div className="screener-controls">
           <button
