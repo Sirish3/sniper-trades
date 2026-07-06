@@ -12,11 +12,14 @@ from __future__ import annotations
 
 import math
 import os
+from datetime import date as date_cls, timedelta
 
 import pandas as pd
 from flask import Flask, jsonify, request
 
 from data import get_daily_bars, get_tradable_universe
+from earnings_calendar import get_earnings_for_tickers
+from economic_calendar import filter_calendar, get_economic_calendar, next_high_impact_event
 from indicators import sma
 from levels import TRAIL_RULE_TEXT, position_size
 from pipeline import TEST_SUBSET, run_scan
@@ -66,6 +69,7 @@ COLUMN_TO_KEY = {
     "RS Score": "rsScore",
     "% Off 52w High": "pctOffHigh",
     "Vol vs 50d Avg": "volVsAvg",
+    "Caution Tags": "cautionTags",
 }
 
 
@@ -146,6 +150,76 @@ def position_size_endpoint():
         stop=float(body.get("stop", 0)),
     )
     return jsonify(sizing)
+
+
+def _parse_date_param(value: str | None) -> date_cls | None:
+    if not value:
+        return None
+    try:
+        return date_cls.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+@app.route("/api/economic-calendar", methods=["GET"])
+def economic_calendar_endpoint():
+    """Query params (all optional): impact=High,Medium  start=YYYY-MM-DD
+    end=YYYY-MM-DD  refresh=1. Defaults match economic_calendar.py's own
+    defaults (High+Medium, this week + next week) when omitted."""
+    impact_param = request.args.get("impact")
+    impact_levels = set(impact_param.split(",")) if impact_param else None
+    start = _parse_date_param(request.args.get("start"))
+    end = _parse_date_param(request.args.get("end"))
+    force_refresh = request.args.get("refresh") in ("1", "true", "True")
+
+    events, live_ok = get_economic_calendar(force_refresh=force_refresh)
+    filtered = filter_calendar(events, impact_levels=impact_levels, start_date=start, end_date=end)
+
+    nearest = next_high_impact_event(events)
+    next_high_impact = None
+    if nearest:
+        event, days = nearest
+        next_high_impact = {"event": event.event, "date": event.date, "daysUntil": days}
+
+    return jsonify({
+        "liveDataAvailable": live_ok,
+        "nextHighImpact": next_high_impact,
+        "events": [
+            {
+                "date": e.date, "time": e.time, "event": e.event, "impact": e.impact,
+                "actual": e.actual, "forecast": e.forecast, "previous": e.previous, "source": e.source,
+            }
+            for e in filtered
+        ],
+    })
+
+
+@app.route("/api/earnings", methods=["GET"])
+def earnings_endpoint():
+    """?tickers=AAPL,MSFT,... (required, comma-separated) &refresh=1"""
+    tickers_param = request.args.get("tickers", "")
+    tickers = [t.strip().upper() for t in tickers_param.split(",") if t.strip()]
+    if not tickers:
+        return jsonify({"error": "Missing required query param: tickers"}), 400
+
+    force_refresh = request.args.get("refresh") in ("1", "true", "True")
+    infos = get_earnings_for_tickers(tickers, force_refresh=force_refresh)
+
+    return jsonify({
+        "results": [
+            {
+                "ticker": info.ticker,
+                "nextEarningsDate": info.next_earnings_date,
+                "daysUntil": info.days_until,
+                "beforeAfterMarket": info.before_after,
+                "estEps": info.est_eps,
+                "priorQtrEps": info.prior_qtr_eps,
+                "earningsRisk": info.earnings_risk,
+                "error": info.error,
+            }
+            for info in infos
+        ],
+    })
 
 
 if __name__ == "__main__":

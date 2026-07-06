@@ -5,6 +5,9 @@ import AlpacaStatus from './components/AlpacaStatus'
 import Footer from './components/Footer'
 import AnalysisResult from './components/AnalysisResult'
 import WeekHighScreener from './components/WeekHighScreener'
+import SwingScanner from './components/SwingScanner'
+import EconomicCalendar from './components/EconomicCalendar'
+import EarningsCalendar from './components/EarningsCalendar'
 import { SearchIcon, LoaderIcon } from './components/Icons'
 import { analyzeTicker } from './utils/claudeApi'
 import { getTechnicalAnalysis } from './utils/marketData'
@@ -20,6 +23,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [activeTab, setActiveTab] = useState('analysis')
+  const [scannerTickers, setScannerTickers] = useState([])
 
   const handleSaveApiKey = (key) => {
     setApiKey(key)
@@ -81,6 +85,24 @@ function App() {
         >
           52W High
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'scanner' ? 'active' : ''}`}
+          onClick={() => setActiveTab('scanner')}
+        >
+          Scanner
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'econcalendar' ? 'active' : ''}`}
+          onClick={() => setActiveTab('econcalendar')}
+        >
+          Economic Calendar
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'earnings' ? 'active' : ''}`}
+          onClick={() => setActiveTab('earnings')}
+        >
+          Earnings
+        </button>
       </nav>
 
       <main className="app-main">
@@ -115,6 +137,9 @@ function App() {
         )}
 
         {activeTab === 'weekhigh' && <WeekHighScreener />}
+        {activeTab === 'scanner' && <SwingScanner onResults={setScannerTickers} />}
+        {activeTab === 'econcalendar' && <EconomicCalendar />}
+        {activeTab === 'earnings' && <EarningsCalendar scanTickers={scannerTickers} />}
       </main>
 
       <Footer />

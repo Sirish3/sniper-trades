@@ -17,3 +17,28 @@ services:
         sync: false
       - key: ALERT_TO_EMAIL
         sync: false
+
+  # Swing scanner (Trend Template + VCP, plus Economic/Earnings calendars)
+  # API — backs the React "Scanner", "Economic Calendar", and "Earnings"
+  # tabs. `name` matches the already-existing manually-created service
+  # (sniper-trades.onrender.com), our one available free web service slot
+  # beyond the paid scheduler above, so this Blueprint adopts it instead
+  # of creating a new one. Deploys swing_scanner/ directly now (no
+  # combined_service/ proxy needed) since stock_screener isn't being
+  # redeployed alongside it.
+  - type: web
+    name: sniper-trades
+    runtime: docker
+    rootDir: swing_scanner
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ALPACA_KEY_ID
+        sync: false
+      - key: ALPACA_SECRET_KEY
+        sync: false
+      - key: ALPACA_BASE_URL
+        value: https://paper-api.alpaca.markets
+      - key: ALPACA_DATA_URL
+        value: https://data.alpaca.markets/v2/stocks
