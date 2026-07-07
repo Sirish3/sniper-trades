@@ -7,6 +7,7 @@ scan on the same day doesn't re-hit Alpaca for data that can't have changed.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -14,6 +15,8 @@ from pathlib import Path
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -181,6 +184,13 @@ def get_daily_bars(symbol: str, lookback_days: int = 400, feed: str = "iex", use
             if not page_token:
                 break
     except requests.RequestException:
+        return None
+    except RuntimeError:
+        # _headers() raises this when ALPACA_KEY_ID/ALPACA_SECRET_KEY aren't
+        # set — worth logging loudly (it's a config problem, not a bad
+        # ticker) but callers rely on None, never an exception, to turn
+        # into a clean 404 instead of a 500.
+        logger.error("Alpaca credentials missing or invalid — cannot fetch bars for %s", symbol)
         return None
 
     if not bars:
