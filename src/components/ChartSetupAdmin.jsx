@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
-import {
-  createSetup, deleteSetup, getAdminToken, getAllSetupsForAdmin, setAdminToken, updateSetup,
-} from '../utils/chartSetupsApi'
+import { createSetup, deleteSetup, getAllSetupsForAdmin, updateSetup } from '../utils/chartSetupsApi'
 import { draftChartSetupBlurb } from '../utils/claudeApi'
 
 const STATUSES = ['draft', 'published', 'archived']
@@ -31,7 +29,6 @@ function toFormState(setup) {
 }
 
 export default function ChartSetupAdmin({ apiKey }) {
-  const [token, setToken] = useState(getAdminToken())
   const [setups, setSetups] = useState(null)
   const [selectedId, setSelectedId] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
@@ -55,10 +52,6 @@ export default function ChartSetupAdmin({ apiKey }) {
     setSelectedId(null)
     setForm(EMPTY_FORM)
     setError(null)
-  }
-
-  function handleTokenSave() {
-    setAdminToken(token.trim())
   }
 
   function update(field, value) {
@@ -145,20 +138,6 @@ export default function ChartSetupAdmin({ apiKey }) {
       <div className="bt-header-block">
         <div className="bt-title">Chart Patterns — Admin</div>
         <div className="bt-subtitle">Manually curated setups. Pick the ticker, pattern, and levels yourself — Claude only drafts the blurb.</div>
-      </div>
-
-      <div className="bt-controls">
-        <label className="scanner-input-label" style={{ flex: 1 }}>
-          Admin token
-          <input
-            className="bt-input"
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder="paste the shared admin token"
-          />
-        </label>
-        <button className="btn" onClick={handleTokenSave}>Save token</button>
       </div>
 
       {error && <div className="bt-error">{error}</div>}

@@ -3,20 +3,6 @@
 // absolute VITE_SWING_SCANNER_API_URL in production).
 const API_BASE = import.meta.env.VITE_SWING_SCANNER_API_URL || '/swing-scanner-api'
 
-const ADMIN_TOKEN_KEY = 'chart-setups-admin-token'
-
-export function getAdminToken() {
-  return localStorage.getItem(ADMIN_TOKEN_KEY) || ''
-}
-
-export function setAdminToken(token) {
-  localStorage.setItem(ADMIN_TOKEN_KEY, token)
-}
-
-function adminHeaders() {
-  return { 'Content-Type': 'application/json', 'X-Admin-Token': getAdminToken() }
-}
-
 async function handle(res) {
   const data = res.status === 204 ? null : await res.json()
   if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`)
@@ -32,7 +18,7 @@ export async function getSetups(pattern) {
 
 // Admin: every setup regardless of status (draft/published/archived).
 export async function getAllSetupsForAdmin() {
-  const data = await handle(await fetch(`${API_BASE}/api/setups?status=all`, { headers: adminHeaders() }))
+  const data = await handle(await fetch(`${API_BASE}/api/setups?status=all`))
   return data.results
 }
 
@@ -52,7 +38,7 @@ export async function getSetupCandles(id, days = 180) {
 export async function createSetup(setup) {
   return handle(await fetch(`${API_BASE}/api/setups`, {
     method: 'POST',
-    headers: adminHeaders(),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(setup),
   }))
 }
@@ -60,14 +46,11 @@ export async function createSetup(setup) {
 export async function updateSetup(id, setup) {
   return handle(await fetch(`${API_BASE}/api/setups/${id}`, {
     method: 'PUT',
-    headers: adminHeaders(),
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(setup),
   }))
 }
 
 export async function deleteSetup(id) {
-  return handle(await fetch(`${API_BASE}/api/setups/${id}`, {
-    method: 'DELETE',
-    headers: adminHeaders(),
-  }))
+  return handle(await fetch(`${API_BASE}/api/setups/${id}`, { method: 'DELETE' }))
 }
