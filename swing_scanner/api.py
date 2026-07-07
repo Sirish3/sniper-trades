@@ -16,8 +16,11 @@ from datetime import date as date_cls, timedelta
 
 import pandas as pd
 from flask import Flask, jsonify, request
+from functools import wraps
 
+from chart_setups import STATUSES, create_setup, delete_setup, get_setup, list_setups, pattern_counts, update_setup
 from data import get_daily_bars, get_tradable_universe
+from database import init_db
 from earnings_calendar import get_earnings_for_tickers
 from economic_calendar import filter_calendar, get_economic_calendar, next_high_impact_event
 from indicators import sma
@@ -25,6 +28,23 @@ from levels import TRAIL_RULE_TEXT, position_size
 from pipeline import TEST_SUBSET, run_scan
 
 app = Flask(__name__)
+init_db()
+
+# TEMPORARY: shared-secret admin auth for the Chart Patterns admin form.
+# users_api (the only other service with a "users" concept) has no auth of
+# its own to reuse yet — swap this for real session/JWT auth once that
+# exists. Until then, ADMIN_TOKEN must be set in the environment for writes
+# to work at all (no default — an unset token must never mean "wide open").
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN")
+
+
+def require_admin(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not ADMIN_TOKEN or request.headers.get("X-Admin-Token") != ADMIN_TOKEN:
+            return jsonify({"error": "Unauthorized"}), 401
+        return fn(*args, **kwargs)
+    return wrapper
 
 CHART_LOOKBACK_DAYS = 260
 
@@ -40,14 +60,16 @@ def add_cors_headers(response):
     origin = request.headers.get("Origin")
     if origin in ALLOWED_ORIGINS:
         response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Admin-Token"
     return response
 
 
 @app.route("/api/scan", methods=["OPTIONS"])
 @app.route("/api/position-size", methods=["OPTIONS"])
-def cors_preflight():
+@app.route("/api/setups", methods=["OPTIONS"])
+@app.route("/api/setups/<setup_id>", methods=["OPTIONS"])
+def cors_preflight(setup_id=None):
     return "", 204
 
 
@@ -220,6 +242,96 @@ def earnings_endpoint():
             for info in infos
         ],
     })
+
+
+# ── Chart Patterns (manually curated setup gallery) ──────────────────────
+
+def _is_admin() -> bool:
+    return bool(ADMIN_TOKEN) and request.headers.get("X-Admin-Token") == ADMIN_TOKEN
+
+
+@app.route("/api/setups", methods=["GET"])
+def setups_list():
+    """Public gallery: published setups only, optional ?pattern=X filter.
+    The admin form additionally passes ?status=draft|archived (with the
+    X-Admin-Token header) to manage unpublished setups — any non-"published"
+    status is silently ignored without a valid admin token."""
+    pattern_type = request.args.get("pattern")
+    status = request.args.get("status", "published")
+    if status != "published" and not _is_admin():
+        status = "published"
+    return jsonify({"results": list_setups(status=None if status == "all" else status, pattern_type=pattern_type)})
+
+
+@app.route("/api/setups/pattern-counts", methods=["GET"])
+def setups_pattern_counts():
+    return jsonify({"results": pattern_counts(status="published")})
+
+
+@app.route("/api/setups/<setup_id>", methods=["GET"])
+def setups_get(setup_id):
+    setup = get_setup(setup_id)
+    if setup is None:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(setup)
+
+
+@app.route("/api/setups/<setup_id>/candles", methods=["GET"])
+def setups_candles(setup_id):
+    setup = get_setup(setup_id)
+    if setup is None:
+        return jsonify({"error": "Not found"}), 404
+
+    days = int(request.args.get("days", 180))
+    # Only daily bars are available (data.py's get_daily_bars); the
+    # `timeframe` param is accepted for forward-compatibility but anything
+    # other than 1Day currently just falls back to daily.
+    df = get_daily_bars(setup["ticker"], lookback_days=days)
+    if df is None:
+        return jsonify({"error": f"No price data available for {setup['ticker']}"}), 404
+
+    candles = [
+        {
+            "date": date.strftime("%Y-%m-%d"),
+            "open": round(float(row["o"]), 2),
+            "high": round(float(row["h"]), 2),
+            "low": round(float(row["l"]), 2),
+            "close": round(float(row["c"]), 2),
+            "volume": int(row["v"]),
+        }
+        for date, row in df.tail(days).iterrows()
+    ]
+    return jsonify({"ticker": setup["ticker"], "candles": candles})
+
+
+@app.route("/api/setups", methods=["POST"])
+@require_admin
+def setups_create():
+    body = request.get_json(force=True, silent=True) or {}
+    if not body.get("ticker") or not body.get("patternType"):
+        return jsonify({"error": "ticker and patternType are required"}), 400
+    created_by = request.headers.get("X-Admin-User")
+    return jsonify(create_setup(body, created_by=created_by)), 201
+
+
+@app.route("/api/setups/<setup_id>", methods=["PUT"])
+@require_admin
+def setups_update(setup_id):
+    body = request.get_json(force=True, silent=True) or {}
+    if "status" in body and body["status"] not in STATUSES:
+        return jsonify({"error": f"status must be one of {sorted(STATUSES)}"}), 400
+    updated = update_setup(setup_id, body)
+    if updated is None:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(updated)
+
+
+@app.route("/api/setups/<setup_id>", methods=["DELETE"])
+@require_admin
+def setups_delete(setup_id):
+    if not delete_setup(setup_id):
+        return jsonify({"error": "Not found"}), 404
+    return "", 204
 
 
 if __name__ == "__main__":

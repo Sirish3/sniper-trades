@@ -8,7 +8,9 @@ import WeekHighScreener from './components/WeekHighScreener'
 import SwingScanner from './components/SwingScanner'
 import EconomicCalendar from './components/EconomicCalendar'
 import EarningsCalendar from './components/EarningsCalendar'
-import { SearchIcon, LoaderIcon } from './components/Icons'
+import ChartPatterns from './components/ChartPatterns'
+import ChartSetupAdmin from './components/ChartSetupAdmin'
+import { SearchIcon, LoaderIcon, SettingsIcon } from './components/Icons'
 import { analyzeTicker } from './utils/claudeApi'
 import { getTechnicalAnalysis } from './utils/marketData'
 
@@ -69,6 +71,14 @@ function App() {
         <div className="header-actions">
           <AlpacaStatus />
           <ApiKeySettings apiKey={apiKey} onSave={handleSaveApiKey} />
+          <button
+            className="icon-btn"
+            onClick={() => setActiveTab('chartSetupsAdmin')}
+            title="Chart Patterns admin"
+            aria-label="Chart Patterns admin"
+          >
+            <SettingsIcon width={14} height={14} />
+          </button>
         </div>
       </header>
 
@@ -90,6 +100,12 @@ function App() {
           onClick={() => setActiveTab('scanner')}
         >
           Scanner
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'chartpatterns' ? 'active' : ''}`}
+          onClick={() => setActiveTab('chartpatterns')}
+        >
+          Chart Patterns
         </button>
         <button
           className={`tab-btn ${activeTab === 'econcalendar' ? 'active' : ''}`}
@@ -138,8 +154,10 @@ function App() {
 
         {activeTab === 'weekhigh' && <WeekHighScreener />}
         {activeTab === 'scanner' && <SwingScanner onResults={setScannerTickers} />}
+        {activeTab === 'chartpatterns' && <ChartPatterns />}
         {activeTab === 'econcalendar' && <EconomicCalendar />}
         {activeTab === 'earnings' && <EarningsCalendar scanTickers={scannerTickers} />}
+        {activeTab === 'chartSetupsAdmin' && <ChartSetupAdmin apiKey={apiKey} />}
       </main>
 
       <Footer />

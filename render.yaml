@@ -42,3 +42,7 @@ services:
         value: https://paper-api.alpaca.markets
       - key: ALPACA_DATA_URL
         value: https://data.alpaca.markets/v2/stocks
+      - key: DATABASE_URL
+        sync: false # same Neon Postgres instance as the other two services — required since chart_setups was added
+      - key: ADMIN_TOKEN
+        sync: false # shared-secret gate for POST/PUT/DELETE /api/setups until real auth exists

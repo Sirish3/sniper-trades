@@ -82,6 +82,55 @@ export async function getSwingTradeReview(result, apiKey) {
   }
 }
 
+const SETUP_BLURB_MAX_TOKENS = 300
+
+function buildSetupBlurbPrompt(ticker, patternType, supportLow, supportHigh, resistance) {
+  const supportText = supportHigh != null
+    ? `$${supportLow} – $${supportHigh}`
+    : `$${supportLow}`
+  return `Write a short (2-3 sentence) technical-analysis blurb for a chart setup card on a swing-trading site.
+
+Ticker: ${ticker}
+Pattern: ${patternType}
+Support: ${supportText}
+Resistance: ${resistance != null ? `$${resistance}` : 'not set'}
+
+Describe the setup itself (what the pattern looks like forming, why the levels matter) — do not predict a price target or give trade advice. Plain prose, no markdown, no preamble.`
+}
+
+// Drafts the description text for a manually-curated Chart Patterns setup —
+// an editing assist only (see ChartSetupAdmin.jsx). A human always reviews/
+// edits before publishing, same as getSwingTradeReview never being shown
+// unedited. Returns '' (never throws) on failure so the admin form can fall
+// back to typing the blurb by hand.
+export async function draftChartSetupBlurb(ticker, patternType, supportLow, supportHigh, resistance, apiKey) {
+  if (!apiKey) return ''
+
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: SETUP_BLURB_MAX_TOKENS,
+        messages: [{ role: 'user', content: buildSetupBlurbPrompt(ticker, patternType, supportLow, supportHigh, resistance) }],
+      }),
+    })
+
+    if (!response.ok) return ''
+
+    const data = await response.json()
+    return (data?.content?.[0]?.text ?? '').trim()
+  } catch {
+    return ''
+  }
+}
+
 function buildSystemPrompt() {
   const today = new Date().toLocaleDateString('en-US', {
     year: 'numeric',

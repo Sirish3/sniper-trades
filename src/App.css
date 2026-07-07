@@ -2582,3 +2582,204 @@
   font-weight: 700;
   color: var(--text);
 }
+
+/* ── Chart Patterns ── */
+
+.cp-page {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+.cp-sidebar {
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  position: sticky;
+  top: 1rem;
+}
+
+.cp-sidebar-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 0 0.5rem 0.5rem;
+}
+
+.cp-sidebar-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.cp-sidebar-item:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.cp-sidebar-item.active {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.cp-sidebar-count {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.cp-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.cp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.cp-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.cp-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.cp-card-ticker {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.cp-card-price {
+  margin-left: 0.5rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.cp-pattern-tag {
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--purple);
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cp-card-updated {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.cp-chart {
+  margin: 0 -0.25rem;
+}
+
+.cp-levels {
+  display: flex;
+  gap: 1rem;
+}
+
+.cp-level {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.cp-level-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.cp-level-value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.cp-level-support .cp-level-value {
+  color: var(--green);
+}
+
+.cp-level-resistance .cp-level-value {
+  color: var(--red);
+}
+
+.cp-card-description {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.cp-admin-layout {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  margin-top: 1rem;
+}
+
+.cp-admin-list {
+  flex: 0 0 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cp-admin-form {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 1rem;
+}
+
+textarea.cp-textarea {
+  width: 100%;
+  max-width: none;
+  resize: vertical;
+  font-family: var(--font-body);
+}
+
+.cp-textarea-mono {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 900px) {
+  .cp-page,
+  .cp-admin-layout {
+    flex-direction: column;
+  }
+
+  .cp-sidebar,
+  .cp-admin-list {
+    flex: none;
+    width: 100%;
+    position: static;
+  }
+}
