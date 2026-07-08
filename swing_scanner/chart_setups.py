@@ -71,6 +71,20 @@ def get_setup(setup_id: str) -> dict | None:
         return row.to_dict() if row else None
 
 
+def get_setup_by_ticker_pattern(ticker: str, pattern_type: str) -> dict | None:
+    """Used by the pattern-detection scan (pattern_scan.py) to decide
+    whether a detected setup is new, an update to an existing draft/
+    published row, or an unchanged duplicate — regardless of status, so a
+    re-detected pattern updates the same row rather than spawning a
+    second draft for a setup that's already published."""
+    with SessionLocal() as session:
+        stmt = select(ChartSetup).where(
+            ChartSetup.ticker == ticker.upper(), ChartSetup.pattern_type == pattern_type
+        )
+        row = session.scalars(stmt).first()
+        return row.to_dict() if row else None
+
+
 def pattern_counts(status: str | None = "published") -> list[dict]:
     with SessionLocal() as session:
         stmt = select(ChartSetup.pattern_type, func.count()).group_by(ChartSetup.pattern_type)

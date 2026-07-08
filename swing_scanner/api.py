@@ -18,16 +18,18 @@ import pandas as pd
 from flask import Flask, jsonify, request
 
 from chart_setups import STATUSES, create_setup, delete_setup, get_setup, list_setups, pattern_counts, update_setup
-from data import get_daily_bars, get_tradable_universe
+from data import bars_df_to_candles, get_daily_bars, get_tradable_universe
 from database import init_db
 from earnings_calendar import get_earnings_for_tickers
 from economic_calendar import filter_calendar, get_economic_calendar, next_high_impact_event
 from indicators import sma
 from levels import TRAIL_RULE_TEXT, position_size
 from pipeline import TEST_SUBSET, run_scan
+from scheduler import start_scheduler
 
 app = Flask(__name__)
 init_db()
+start_scheduler()
 
 CHART_LOOKBACK_DAYS = 260
 
@@ -265,18 +267,7 @@ def setups_candles(setup_id):
     if df is None:
         return jsonify({"error": f"No price data available for {setup['ticker']}"}), 404
 
-    candles = [
-        {
-            "date": date.strftime("%Y-%m-%d"),
-            "open": round(float(row["o"]), 2),
-            "high": round(float(row["h"]), 2),
-            "low": round(float(row["l"]), 2),
-            "close": round(float(row["c"]), 2),
-            "volume": int(row["v"]),
-        }
-        for date, row in df.tail(days).iterrows()
-    ]
-    return jsonify({"ticker": setup["ticker"], "candles": candles})
+    return jsonify({"ticker": setup["ticker"], "candles": bars_df_to_candles(df, days=days)})
 
 
 @app.route("/api/setups", methods=["POST"])

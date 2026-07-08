@@ -209,6 +209,26 @@ def get_daily_bars(symbol: str, lookback_days: int = 400, feed: str = "iex", use
     return df
 
 
+def bars_df_to_candles(df: pd.DataFrame, days: int | None = None) -> list[dict]:
+    """Converts a get_daily_bars() DataFrame (o/h/l/c/v columns, indexed by
+    date) into the {date, open, high, low, close, volume} dict shape both
+    api.py's candle routes and pattern_detector.py (via
+    from_alpaca_json.py) consume — one conversion, reused everywhere
+    instead of each caller re-deriving it."""
+    rows = df.tail(days) if days else df
+    return [
+        {
+            "date": date.strftime("%Y-%m-%d"),
+            "open": round(float(row["o"]), 2),
+            "high": round(float(row["h"]), 2),
+            "low": round(float(row["l"]), 2),
+            "close": round(float(row["c"]), 2),
+            "volume": int(row["v"]),
+        }
+        for date, row in rows.iterrows()
+    ]
+
+
 def get_tradable_universe(
     min_price: float = 10.0,
     min_dollar_volume: float = 10_000_000.0,
