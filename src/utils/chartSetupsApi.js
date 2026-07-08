@@ -54,3 +54,13 @@ export async function updateSetup(id, setup) {
 export async function deleteSetup(id) {
   return handle(await fetch(`${API_BASE}/api/setups/${id}`, { method: 'DELETE' }))
 }
+
+// Manual trigger for the same detection job scheduler.py runs at 4:30pm ET —
+// runs synchronously and can take a while for a longer ticker list.
+export async function runPatternScan(symbols) {
+  return handle(await fetch(`${API_BASE}/api/pattern-scan/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbols }),
+  }))
+}

@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react'
-import { createSetup, deleteSetup, getAllSetupsForAdmin, updateSetup } from '../utils/chartSetupsApi'
+import { createSetup, deleteSetup, getAllSetupsForAdmin, runPatternScan, updateSetup } from '../utils/chartSetupsApi'
 import { draftChartSetupBlurb } from '../utils/claudeApi'
 
 const STATUSES = ['draft', 'published', 'archived']
+
+// Mirrors swing_scanner/pipeline.py's TEST_SUBSET — the same default
+// watchlist the scheduled 4:30pm ET pattern scan uses when no custom
+// ticker list is given.
+const DEFAULT_WATCHLIST = [
+  'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'JPM', 'V', 'MA',
+  'HD', 'UNH', 'JNJ', 'PG', 'XOM', 'CVX', 'WMT', 'KO', 'PEP', 'DIS',
+]
 
 const EMPTY_FORM = {
   ticker: '',
@@ -35,6 +43,13 @@ export default function ChartSetupAdmin({ apiKey }) {
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
   const [drafting, setDrafting] = useState(false)
+
+  const [checkedDefaults, setCheckedDefaults] = useState(new Set())
+  const [customTicker, setCustomTicker] = useState('')
+  const [customTickers, setCustomTickers] = useState([])
+  const [scanning, setScanning] = useState(false)
+  const [scanError, setScanError] = useState(null)
+  const [scanSummary, setScanSummary] = useState(null)
 
   function loadSetups() {
     getAllSetupsForAdmin().then(setSetups).catch((err) => setError(err.message))
@@ -133,6 +148,45 @@ export default function ChartSetupAdmin({ apiKey }) {
     }
   }
 
+  function toggleDefaultTicker(ticker) {
+    setCheckedDefaults((prev) => {
+      const next = new Set(prev)
+      if (next.has(ticker)) next.delete(ticker)
+      else next.add(ticker)
+      return next
+    })
+  }
+
+  function addCustomTicker() {
+    const t = customTicker.trim().toUpperCase()
+    if (t && !customTickers.includes(t)) setCustomTickers((prev) => [...prev, t])
+    setCustomTicker('')
+  }
+
+  function removeCustomTicker(t) {
+    setCustomTickers((prev) => prev.filter((x) => x !== t))
+  }
+
+  async function handleRunScan() {
+    const symbols = [...checkedDefaults, ...customTickers]
+    if (symbols.length === 0) {
+      setScanError('Check at least one watchlist ticker, or add a custom one, before running a scan.')
+      return
+    }
+    setScanning(true)
+    setScanError(null)
+    setScanSummary(null)
+    try {
+      const summary = await runPatternScan(symbols)
+      setScanSummary(summary)
+      loadSetups()
+    } catch (err) {
+      setScanError(err.message)
+    } finally {
+      setScanning(false)
+    }
+  }
+
   return (
     <div className="backtester">
       <div className="bt-header-block">
@@ -141,6 +195,83 @@ export default function ChartSetupAdmin({ apiKey }) {
       </div>
 
       {error && <div className="bt-error">{error}</div>}
+
+      <div className="bt-section-divider"><span>Run Pattern Scan</span></div>
+      <div className="cp-scan-panel">
+        <div className="bt-subtitle">
+          Runs the same rule-based detector (Double Top/Bottom, Cup and Handle, Triangles, Wedges, Bull Flag) the
+          4:30pm ET daily job uses — on demand, against whatever tickers you pick below. Results land as drafts,
+          same as always.
+        </div>
+
+        <div className="cp-watchlist-grid">
+          {DEFAULT_WATCHLIST.map((ticker) => (
+            <label key={ticker} className="scanner-checkbox-label">
+              <input type="checkbox" checked={checkedDefaults.has(ticker)} onChange={() => toggleDefaultTicker(ticker)} />
+              {ticker}
+            </label>
+          ))}
+        </div>
+
+        <div className="cp-custom-tickers">
+          <label className="scanner-input-label" style={{ flex: 1 }}>
+            Add a custom ticker
+            <input
+              className="bt-input"
+              value={customTicker}
+              onChange={(e) => setCustomTicker(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomTicker() } }}
+              placeholder="e.g. SOFI"
+            />
+          </label>
+          <button className="btn" onClick={addCustomTicker}>Add</button>
+        </div>
+
+        {customTickers.length > 0 && (
+          <div className="cp-ticker-chip-row">
+            {customTickers.map((t) => (
+              <span key={t} className="cp-ticker-chip">
+                {t}
+                <button className="cp-ticker-chip-remove" onClick={() => removeCustomTicker(t)} aria-label={`Remove ${t}`}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="bt-run-row" style={{ marginTop: '0.75rem' }}>
+          <button className="btn btn-primary bt-run-btn" onClick={handleRunScan} disabled={scanning}>
+            {scanning ? 'Scanning…' : 'Run Scan'}
+          </button>
+        </div>
+
+        {scanError && <div className="bt-error">{scanError}</div>}
+
+        {scanSummary && (
+          <div className="cp-scan-results">
+            <div className="cp-scan-results-title">
+              {Object.keys(scanSummary.detectedPerTicker).length} ticker(s) scanned — {scanSummary.rows.length} new/updated,{' '}
+              {scanSummary.skipped} unchanged, {scanSummary.claudeCalls} Claude call{scanSummary.claudeCalls === 1 ? '' : 's'}
+            </div>
+            <div className="cp-scan-per-ticker">
+              {Object.entries(scanSummary.detectedPerTicker).map(([ticker, count]) => (
+                <span key={ticker} className="cp-scan-ticker-chip">{ticker}: {count}</span>
+              ))}
+            </div>
+            {scanSummary.rows.length > 0 && (
+              <div className="cp-admin-list" style={{ marginTop: '0.5rem' }}>
+                {scanSummary.rows.map((row) => (
+                  <button key={row.id} className="cp-sidebar-item" onClick={() => selectSetup(row)}>
+                    <span>{row.ticker} — {row.patternType}</span>
+                    <span className="cp-sidebar-count">{row.status}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="bt-section-divider"><span>Manage Setups</span></div>
 
       <div className="cp-admin-layout">
         <div className="cp-admin-list">

@@ -24,6 +24,7 @@ from earnings_calendar import get_earnings_for_tickers
 from economic_calendar import filter_calendar, get_economic_calendar, next_high_impact_event
 from indicators import sma
 from levels import TRAIL_RULE_TEXT, position_size
+from pattern_scan import run_pattern_scan
 from pipeline import TEST_SUBSET, run_scan
 from scheduler import start_scheduler
 
@@ -54,6 +55,7 @@ def add_cors_headers(response):
 @app.route("/api/position-size", methods=["OPTIONS"])
 @app.route("/api/setups", methods=["OPTIONS"])
 @app.route("/api/setups/<setup_id>", methods=["OPTIONS"])
+@app.route("/api/pattern-scan/run", methods=["OPTIONS"])
 def cors_preflight(setup_id=None):
     return "", 204
 
@@ -294,6 +296,31 @@ def setups_delete(setup_id):
     if not delete_setup(setup_id):
         return jsonify({"error": "Not found"}), 404
     return "", 204
+
+
+MAX_MANUAL_SCAN_SYMBOLS = 25  # runs synchronously in the request — keep this bounded
+
+
+@app.route("/api/pattern-scan/run", methods=["POST"])
+def pattern_scan_run():
+    """Manual trigger for the same job scheduler.py runs at 4:30pm ET —
+    lets the admin UI run detection on demand against a chosen ticker
+    list instead of waiting for the cron. Runs synchronously (gunicorn's
+    --timeout 600 covers a reasonably small manual list); body:
+    {"symbols": ["AAPL", "MSFT", ...]} — omitted/empty uses
+    pipeline.TEST_SUBSET, same default as the scheduled job.
+    """
+    body = request.get_json(force=True, silent=True) or {}
+    symbols = body.get("symbols")
+    if symbols:
+        symbols = [s.strip().upper() for s in symbols if s.strip()][:MAX_MANUAL_SCAN_SYMBOLS]
+
+    try:
+        summary = run_pattern_scan(symbols or None)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+
+    return jsonify(summary)
 
 
 if __name__ == "__main__":

@@ -2770,6 +2770,88 @@ textarea.cp-textarea {
   font-size: 0.8rem;
 }
 
+.cp-scan-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.cp-watchlist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 0.4rem 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.cp-custom-tickers {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.cp-ticker-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.cp-ticker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.4rem 0.15rem 0.7rem;
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+}
+
+.cp-ticker-chip-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.1rem 0.3rem;
+}
+
+.cp-ticker-chip-remove:hover {
+  color: var(--red);
+}
+
+.cp-scan-results {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.cp-scan-results-title {
+  font-size: 0.85rem;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+.cp-scan-per-ticker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.cp-scan-ticker-chip {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
 @media (max-width: 900px) {
   .cp-page,
   .cp-admin-layout {
