@@ -43,6 +43,7 @@ export default function ChartSetupAdmin({ apiKey }) {
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
   const [drafting, setDrafting] = useState(false)
+  const [justSaved, setJustSaved] = useState(false)
 
   const [checkedDefaults, setCheckedDefaults] = useState(new Set())
   const [customTicker, setCustomTicker] = useState('')
@@ -61,16 +62,19 @@ export default function ChartSetupAdmin({ apiKey }) {
     setSelectedId(setup.id)
     setForm(toFormState(setup))
     setError(null)
+    setJustSaved(false)
   }
 
   function newSetup() {
     setSelectedId(null)
     setForm(EMPTY_FORM)
     setError(null)
+    setJustSaved(false)
   }
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }))
+    setJustSaved(false)
   }
 
   async function handleDraft() {
@@ -122,10 +126,10 @@ export default function ChartSetupAdmin({ apiKey }) {
     setError(null)
     try {
       const payload = buildPayload()
-      if (selectedId) await updateSetup(selectedId, payload)
-      else await createSetup(payload)
+      const saved = selectedId ? await updateSetup(selectedId, payload) : await createSetup(payload)
       loadSetups()
-      newSetup()
+      selectSetup(saved) // keep the just-saved setup loaded (was resetting to a blank form, making a successful save look like it did nothing)
+      setJustSaved(true)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -358,6 +362,7 @@ export default function ChartSetupAdmin({ apiKey }) {
                 Delete
               </button>
             )}
+            {justSaved && <span style={{ color: 'var(--green)', fontSize: '0.85rem' }}>✓ Saved</span>}
           </div>
         </div>
       </div>
