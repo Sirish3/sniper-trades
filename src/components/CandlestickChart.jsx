@@ -1,7 +1,15 @@
 import {
-  ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, ReferenceLine, ReferenceArea, Line,
 } from 'recharts'
+
+// Same SMA periods/colors as SwingScanner.jsx's chart, for visual
+// consistency across the app's two candlestick/line charts.
+const SMA_LINES = [
+  { key: 'sma50', color: '#22c55e', label: 'SMA50' },
+  { key: 'sma150', color: '#eab308', label: 'SMA150' },
+  { key: 'sma200', color: '#ef4444', label: 'SMA200' },
+]
 
 // Draws the high-low wick and open-close body for one candle. Recharts
 // already maps the Bar's [low, high] range onto pixel `y`/`height` via the
@@ -43,6 +51,12 @@ function CandleTooltip({ active, payload, label }) {
       <div className="bt-tooltip-row">H {row.high.toFixed(2)}</div>
       <div className="bt-tooltip-row">L {row.low.toFixed(2)}</div>
       <div className="bt-tooltip-row">C {row.close.toFixed(2)}</div>
+      {SMA_LINES.map(({ key, color, label: smaLabel }) => row[key] != null && (
+        <div className="bt-tooltip-row" key={key}>
+          <span className="bt-tooltip-dot" style={{ background: color }} />
+          {smaLabel} {row[key].toFixed(2)}
+        </div>
+      ))}
     </div>
   )
 }
@@ -74,6 +88,7 @@ export default function CandlestickChart({ candles, annotations, height = 380 })
     ...hlines.map((h) => h.y),
     ...zones.flatMap((z) => [z.y1, z.y2]),
     ...trendlines.flatMap((t) => t.points?.map(([, price]) => price) || []),
+    ...SMA_LINES.flatMap(({ key }) => candles.map((c) => c[key]).filter((v) => v != null)),
   ]
   const domain = [Math.min(...prices) * 0.98, Math.max(...prices) * 1.02]
 
@@ -94,6 +109,20 @@ export default function CandlestickChart({ candles, annotations, height = 380 })
             width={48}
           />
           <Tooltip content={<CandleTooltip />} />
+          <Legend wrapperStyle={{ fontSize: '0.7rem', color: 'var(--text-muted)' }} />
+
+          {SMA_LINES.map(({ key, color, label: smaLabel }) => (
+            <Line
+              key={key}
+              dataKey={key}
+              name={smaLabel}
+              stroke={color}
+              dot={false}
+              strokeWidth={1.3}
+              connectNulls
+              isAnimationActive={false}
+            />
+          ))}
 
           {zones.map((zone, i) => (
             <ReferenceArea
@@ -118,7 +147,7 @@ export default function CandlestickChart({ candles, annotations, height = 380 })
             />
           ))}
 
-          <Bar dataKey={(row) => [row.low, row.high]} shape={<Candle />} isAnimationActive={false} />
+          <Bar dataKey={(row) => [row.low, row.high]} shape={<Candle />} isAnimationActive={false} legendType="none" />
 
           {trendlines.map((trendline, i) => (
             <Line
@@ -130,6 +159,7 @@ export default function CandlestickChart({ candles, annotations, height = 380 })
               dot={false}
               connectNulls
               isAnimationActive={false}
+              legendType="none"
             />
           ))}
         </ComposedChart>

@@ -265,7 +265,12 @@ def setups_candles(setup_id):
     # Only daily bars are available (data.py's get_daily_bars); the
     # `timeframe` param is accepted for forward-compatibility but anything
     # other than 1Day currently just falls back to daily.
-    df = get_daily_bars(setup["ticker"], lookback_days=days)
+    # Fetches `days + 200` rather than just `days` so SMA200 has a full
+    # trailing window even at the start of the visible range — same
+    # buffer-then-trim approach as the /api/chart/<ticker> route above
+    # (fetch generous history, compute SMAs on the whole thing, trim to
+    # the requested window only at the very end via bars_df_to_candles).
+    df = get_daily_bars(setup["ticker"], lookback_days=days + 200)
     if df is None:
         return jsonify({"error": f"No price data available for {setup['ticker']}"}), 404
 
