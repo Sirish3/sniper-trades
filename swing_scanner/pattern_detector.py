@@ -23,6 +23,9 @@ TOLERANCE_PCT = 3.0         # how close two pivot prices must be to count as "ro
 MIN_TRENDLINE_POINTS = 3    # fewer points make R^2 meaningless (2 points always "fit" perfectly)
 FIT_QUALITY_MIN = 0.5       # minimum R^2 for a trendline to count as a real trend, not noise
 FLAT_SLOPE_PCT = 0.05       # slope below this (% of avg price per bar) counts as "flat"
+MAX_PATTERN_AGE_BARS = 15   # if the pivots that define a pattern are older than this, price has
+                             # likely already moved on (broken out/down) and the pattern is stale —
+                             # reject it rather than describe a setup that's no longer live
 
 FLAGPOLE_LOOKBACK = 15      # bars to look back for a sharp prior move
 FLAG_LOOKBACK = 20          # bars of consolidation searched after the flagpole
@@ -141,6 +144,8 @@ def detect_double_top(df: pd.DataFrame, pivots: list[Pivot]) -> PatternMatch | N
     if len(highs) < 2:
         return None
     p1, p2 = highs[-2], highs[-1]
+    if len(df) - 1 - p2.index > MAX_PATTERN_AGE_BARS:
+        return None  # newest defining pivot is stale — price has likely already moved on
     if _pct_diff(p1.price, p2.price) > TOLERANCE_PCT:
         return None
     lows_between = [p for p in pivots if p.kind == "low" and p1.index < p.index < p2.index]
@@ -164,6 +169,8 @@ def detect_double_bottom(df: pd.DataFrame, pivots: list[Pivot]) -> PatternMatch 
     if len(lows) < 2:
         return None
     p1, p2 = lows[-2], lows[-1]
+    if len(df) - 1 - p2.index > MAX_PATTERN_AGE_BARS:
+        return None  # newest defining pivot is stale — price has likely already moved on
     if _pct_diff(p1.price, p2.price) > TOLERANCE_PCT:
         return None
     highs_between = [p for p in pivots if p.kind == "high" and p1.index < p.index < p2.index]
@@ -217,6 +224,8 @@ def detect_cup_and_handle(df: pd.DataFrame, pivots: list[Pivot]) -> PatternMatch
     if not handle_lows:
         return None
     handle_low = handle_lows[0]
+    if len(df) - 1 - handle_low.index > MAX_PATTERN_AGE_BARS:
+        return None  # handle formed too long ago — price has likely already resolved the setup
     handle_depth_pct = (right_rim.price - handle_low.price) / right_rim.price * 100
     if not (0 < handle_depth_pct < cup_depth_pct * 0.5):
         return None  # handle must be shallower and shorter than the cup itself
@@ -240,6 +249,9 @@ def detect_triangle_or_wedge(df: pd.DataFrame, pivots: list[Pivot]) -> PatternMa
     lows = [p for p in pivots if p.kind == "low"][-4:]
     if len(highs) < MIN_TRENDLINE_POINTS or len(lows) < MIN_TRENDLINE_POINTS:
         return None
+    most_recent_pivot_index = max(highs[-1].index, lows[-1].index)
+    if len(df) - 1 - most_recent_pivot_index > MAX_PATTERN_AGE_BARS:
+        return None  # no fresh pivot in a while — these trendlines describe an old range, not now
 
     high_points = [(p.index, p.price) for p in highs]
     low_points = [(p.index, p.price) for p in lows]
