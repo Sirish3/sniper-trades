@@ -177,6 +177,10 @@ def get_daily_bars(symbol: str, lookback_days: int = 400, feed: str = "iex", use
 
             response = _get_with_retry(f"{DATA_URL}/{symbol}/bars", params=params)
             if not response.ok:
+                logger.error(
+                    "Alpaca returned %s fetching bars for %s: %s",
+                    response.status_code, symbol, response.text[:300],
+                )
                 return None
             data = response.json()
             bars.extend(data.get("bars") or [])
