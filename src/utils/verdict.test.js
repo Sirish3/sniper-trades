@@ -104,11 +104,11 @@ describe('getVerdict', () => {
     expect(v.tier).toBe('red')
   })
 
-  it('Alligator EATING_DOWN maps to AVOID_SELL with a Sell headline', () => {
+  it('Alligator EATING_DOWN maps to AVOID_SELL with an Avoid headline (never "Sell" — this is a scan candidate, not a held position)', () => {
     const { a, v } = verdictFor({ alligatorPhase: 'EATING_DOWN' })
-    expect(a.decision.action).toBe('SELL')
+    expect(a.decision.action).toBe('AVOID')
     expect(v.verdict).toBe('AVOID_SELL')
-    expect(v.headline).toBe('Sell')
+    expect(v.headline).toBe('Avoid')
   })
 
   it('weak card (RS 37, bearish AVWAP, cold sector) maps to AVOID_SELL — FIX 2 (the EA case)', () => {

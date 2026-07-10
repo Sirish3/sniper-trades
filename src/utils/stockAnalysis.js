@@ -302,7 +302,14 @@ function extractFlags(r, indicators) {
 // ── decision tree ───────────────────────────────────────────────────────────
 function makeDecision(r, grade, indicators) {
   const action = (() => {
-    if (r.signalType === 'SELL_STOP' || r.alligatorPhase === 'EATING_DOWN' || (r.rsiValue != null && r.rsiValue < 35)) return 'SELL'
+    // NOTE: this function evaluates scan CANDIDATES (stocks you might buy),
+    // never a position you're already holding — analyzeOpenPosition() below
+    // is the separate, real-position path (its own POSITION_ACTION_MAP can
+    // legitimately return 'SELL' for an actual open position's EXIT signal).
+    // A trend-broken/oversold candidate here was never bought, so this never
+    // returns 'SELL' — it's AVOID, same as any other disqualifier, just
+    // named by its dominant reason (trend/momentum) rather than mixed in.
+    if (r.alligatorPhase === 'EATING_DOWN' || (r.rsiValue != null && r.rsiValue < 35)) return 'AVOID'
 
     if (
       grade.finalGrade === 'C' ||
@@ -348,8 +355,9 @@ function makeDecision(r, grade, indicators) {
     BUY: buySummary,
     WAIT: 'Setup is close but at least one confirmation criterion hasn\'t triggered yet.',
     WATCH: 'Within range of the pivot with strong relative strength — not yet breaking out.',
-    AVOID: 'One or more hard disqualifiers (grade, earnings, sector, or extension) rule this out right now.',
-    SELL: 'Trend has turned down or momentum has broken — this is not a long setup.',
+    AVOID: r.alligatorPhase === 'EATING_DOWN' || (r.rsiValue != null && r.rsiValue < 35)
+      ? 'Trend has turned down or momentum has broken — not a long setup right now.'
+      : 'One or more hard disqualifiers (grade, earnings, sector, or extension) rule this out right now.',
   }
 
   const reasons = []

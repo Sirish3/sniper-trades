@@ -321,7 +321,12 @@ export function gradeWeekHighSetup(r) {
 
   const checks = [
     { ok: pctFromHigh != null && pctFromHigh >= -5, miss: `${pctFromHigh?.toFixed(1) ?? '?'}% from pivot (need >= -5%)` },
-    { ok: volRatio20 != null && volRatio20 >= 2.5, miss: `Vol ${volRatio20?.toFixed(2) ?? '?'}x (need >= 2.5x)` },
+    // FIX 1 (applied here too — was still reading today's single-day
+    // volRatio20 while every other gate in this file already used
+    // volForMust): a stock that broke out yesterday on 3x volume and is
+    // quietly digesting today at 1.1x was incorrectly losing this A+
+    // criterion even though the breakout volume already confirmed.
+    { ok: volForMust != null && volForMust >= 2.5, miss: `Vol ${volForMust?.toFixed(2) ?? '?'}x (need >= 2.5x, best of last ${THRESHOLDS.volumeBreakoutWindowDays}d)` },
     { ok: rsRank != null && rsRank > 85, miss: `RS rank ${rsRank ?? '?'} (need > 85)` },
     { ok: rsiValue != null && rsiValue >= 55 && rsiValue <= 72, miss: `RSI ${rsiValue?.toFixed(0) ?? '?'} (need 55-72)` },
     { ok: !!emaFullStack, miss: 'EMA stack not bullish (need 10>20>50)' },

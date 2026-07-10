@@ -40,11 +40,6 @@ export const DISCLAIMER = 'Educational only, not financial advice.'
 
 const VERDICT_TIER = { BUY_NOW: 'green', WATCH: 'yellow', AVOID_SELL: 'red' }
 
-// Structural-weakness reasons that read as a breakdown on a position you'd
-// already be in (trend/momentum failure) get the "Sell" headline; the rest
-// ("don't enter this") get "Avoid".
-const SELL_WEAKNESS_KEYS = new Set(['alligator-down', 'rsi-weak'])
-
 const SIGNAL_PLAIN_LABEL = {
   BUY_BREAKOUT: 'Breakout confirmed',
   BUY_RETEST: 'Retest holding',
@@ -177,11 +172,16 @@ export function getVerdict(r, analysis) {
     verdict = 'WATCH'
   }
 
+  // Always "Avoid," never "Sell" — this screener evaluates candidates you
+  // might buy, not positions you're already holding (Open Positions
+  // tracking was removed), so "Sell" would be a confusing label to show
+  // next to a stock you've never bought. A real held-position "Sell" only
+  // makes sense once position-aware tracking exists again.
   const headline = verdict === 'BUY_NOW'
     ? 'Buy Now'
     : verdict === 'WATCH'
       ? 'Watch — not yet'
-      : SELL_WEAKNESS_KEYS.has(weaknessKey) ? 'Sell' : 'Avoid'
+      : 'Avoid'
 
   const reason = verdict === 'BUY_NOW'
     ? 'Top-grade setup breaking out on strong, confirmed volume.'
