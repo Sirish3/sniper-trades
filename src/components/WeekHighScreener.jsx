@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { getUniverseGroups } from '../utils/agenticScreener'
 import { getTotalStockMarketUniverse } from '../utils/assetUniverse'
 import {
-  scanWeekHighs, classifyWeekHighResults, buildWeekHighTradePlans, MAX_TRADE_PLAN_CANDIDATES,
+  scanWeekHighs, classifyWeekHighResults, checkEarningsForResults, buildWeekHighTradePlans, MAX_TRADE_PLAN_CANDIDATES,
 } from '../utils/weekHighScreener'
 import { getMarketCondition, DEFAULT_PORTFOLIO_SIZE } from '../utils/swingPlan'
 import { loadPositions } from '../utils/positions'
@@ -818,6 +818,10 @@ function WeekHighScreener() {
   const [expandedSymbol, setExpandedSymbol] = useState(null)
   const [analysisSymbol, setAnalysisSymbol] = useState(null)
 
+  const [earningsChecking, setEarningsChecking] = useState(false)
+  const [earningsCheckError, setEarningsCheckError] = useState(null)
+  const [earningsCheckedCount, setEarningsCheckedCount] = useState(null)
+
   const toggleGroup = (id) => {
     setSelectedGroups((prev) => {
       const next = new Set(prev)
@@ -836,6 +840,8 @@ function WeekHighScreener() {
     setResults(null)
     setSectorHeat(null)
     setEarningsFetchFailedCount(0)
+    setEarningsCheckedCount(null)
+    setEarningsCheckError(null)
     setExpandedSymbol(null)
     setTradePlanError(null)
     setProgress({ done: 0, total: 0 })
@@ -850,11 +856,14 @@ function WeekHighScreener() {
       const union = [...unionMap.values()]
 
       const { results: scanResults } = await scanWeekHighs((done, total) => setProgress({ done, total }), union)
-      const { results: classified, sectorHeat: heat, earningsFetchFailedCount: failedCount } = await classifyWeekHighResults(scanResults)
+      const { results: classified, sectorHeat: heat } = await classifyWeekHighResults(scanResults)
       setResults(classified)
       setSectorHeat(heat)
-      setEarningsFetchFailedCount(failedCount)
-      logBuyAlerts(computeBuyAlerts(classified, { portfolioSize, riskEnvironment: 'neutral', openPositions: loadPositions() }))
+      // Buy alerts deliberately wait for Check Earnings now (see
+      // handleCheckEarnings) — every result's earnings is UNKNOWN at this
+      // point (see classifyWeekHighResults), so alerting here would fire
+      // on unverified earnings risk, exactly what this feature exists to
+      // avoid.
     } catch (err) {
       setError(err.message)
     } finally {
@@ -904,6 +913,31 @@ function WeekHighScreener() {
     requestAnimationFrame(() => {
       document.getElementById(`stock-${symbol}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     })
+  }
+
+  // User-triggered, deliberately separate from the scan itself (see
+  // classifyWeekHighResults) — runs Finnhub lookups only against whatever's
+  // currently filtered/visible, not the whole scanned universe, so cost
+  // scales with "stocks I'm actually considering." Re-grades/re-classifies
+  // each result afterward since both can change once earnings is known,
+  // then re-fires buy alerts against this now-earnings-aware subset (moved
+  // here from handleScan for exactly that reason).
+  const handleCheckEarnings = async () => {
+    if (filteredResults.length === 0) return
+
+    setEarningsChecking(true)
+    setEarningsCheckError(null)
+    try {
+      const { fetchFailedCount } = await checkEarningsForResults(filteredResults)
+      setEarningsFetchFailedCount(fetchFailedCount)
+      setEarningsCheckedCount(filteredResults.length)
+      setResults((prev) => [...prev]) // checkEarningsForResults mutates in place — force a re-render
+      logBuyAlerts(computeBuyAlerts(filteredResults, { portfolioSize, riskEnvironment: 'neutral', openPositions: loadPositions() }))
+    } catch (err) {
+      setEarningsCheckError(err.message)
+    } finally {
+      setEarningsChecking(false)
+    }
   }
 
   const handleBuildTradePlans = async () => {
@@ -1087,14 +1121,6 @@ function WeekHighScreener() {
 
       {error && <div className="analysis-error">{error}</div>}
 
-      {earningsFetchFailedCount > 0 && (
-        <div className="analysis-error">
-          Earnings data couldn&apos;t be fetched for {earningsFetchFailedCount} ticker{earningsFetchFailedCount === 1 ? '' : 's'} (rate
-          limit or network issue, not confirmed to have no earnings) — those show as unknown below and are treated
-          as such by grading. Rerun the scan, or scan a smaller universe, to get real coverage for them.
-        </div>
-      )}
-
       <SectorHeatStrip sectorHeat={sectorHeat} />
 
       {results && (
@@ -1172,6 +1198,43 @@ function WeekHighScreener() {
           </div>
         </div>
       )}
+
+      {results && filteredResults.length > 0 && (
+        <div className="result-card scan-summary">
+          <p className="section-summary">
+            Earnings isn&apos;t checked during the scan itself — narrow the list with the filters above, then check
+            earnings for exactly what you&apos;re looking at now ({filteredResults.length} visible) rather than the
+            whole scanned universe.
+          </p>
+          <button
+            className="btn btn-primary"
+            onClick={handleCheckEarnings}
+            disabled={earningsChecking || filteredResults.length === 0}
+          >
+            {earningsChecking ? (
+              <>
+                <LoaderIcon className="spin-icon" />
+                Checking earnings...
+              </>
+            ) : (
+              `Check Earnings (${filteredResults.length})`
+            )}
+          </button>
+          {earningsCheckedCount != null && !earningsChecking && (
+            <span className="text-muted" style={{ marginLeft: '0.75rem' }}>
+              Checked {earningsCheckedCount} ticker{earningsCheckedCount === 1 ? '' : 's'}.
+            </span>
+          )}
+          {earningsFetchFailedCount > 0 && (
+            <p className="analysis-error" style={{ marginTop: '0.75rem' }}>
+              Earnings data couldn&apos;t be fetched for {earningsFetchFailedCount} of those tickers (rate limit or
+              network issue, not confirmed to have no earnings) — they show as unknown and are treated as such by
+              grading. Try again, or check a smaller list at a time.
+            </p>
+          )}
+        </div>
+      )}
+      {earningsCheckError && <div className="analysis-error">{earningsCheckError}</div>}
 
       {results && <BuyListSummary buckets={buyListBuckets} onSelect={handleSelectFromSummary} />}
 

@@ -351,12 +351,18 @@ export function gradeWeekHighSetup(r) {
   return { grade: 'B', reasons: misses.slice(0, 4) }
 }
 
-// Attaches RS rank, sector-ETF heat (HOT/WARM/COLD), earnings date/source,
-// signal classification, and grade to every scanned result. One extra fetch
-// for sector heat (11 SPDR ETFs) and ONE batched Finnhub calendar call for
-// earnings (see earningsProvider.js) — no per-ticker API calls for either.
-// Mutates `results` in place and also returns them alongside the sector
-// heat map.
+// Attaches RS rank, sector-ETF heat (HOT/WARM/COLD), signal classification,
+// and grade to every scanned result. Deliberately does NOT fetch earnings
+// here — that used to run against the entire scanned universe on every
+// scan (thousands of Finnhub calls for a Total Market scan, well past the
+// free tier's budget — see the earningsProvider fetch-failure tracking).
+// Earnings is now a separate, explicit step (see checkEarningsForResults)
+// the user triggers after filtering down to the list they actually care
+// about, so the Finnhub cost scales with "stocks I'm considering," not
+// "stocks that happened to be in the scanned universe." Every result gets
+// earningsSource: 'UNKNOWN' until that step runs — same value grading/
+// verdict logic already treats as "don't know, don't hard-block, tell the
+// user to verify," so nothing downstream needed to change to support this.
 export async function classifyWeekHighResults(results) {
   computeWeekHighRsRanks(results)
 
@@ -367,21 +373,10 @@ export async function classifyWeekHighResults(results) {
     sectorHeat = null
   }
 
-  let earningsMap = {}
-  let earningsFetchFailedCount = 0
-  try {
-    const earningsResult = await getEarningsMap(results.map((r) => r.symbol))
-    earningsMap = earningsResult.map
-    earningsFetchFailedCount = earningsResult.fetchFailedCount
-  } catch {
-    earningsMap = {}
-  }
-
   for (const r of results) {
-    const earnings = earningsMap[r.symbol] ?? { date: null, daysAway: null, source: 'UNKNOWN' }
-    r.earningsDate = earnings.date
-    r.earningsDaysAway = earnings.daysAway
-    r.earningsSource = earnings.source
+    r.earningsDate = null
+    r.earningsDaysAway = null
+    r.earningsSource = 'UNKNOWN'
     r.sectorStatus = sectorHeat?.bySector?.[r.sector]?.status ?? null
     // Grade must be set before classifySignalType runs — its ADX-override
     // trend-confirmation path (GUARD 2) reads r.grade to ensure the override
@@ -393,7 +388,34 @@ export async function classifyWeekHighResults(results) {
     r.signalType = classifySignalType(r)
   }
 
-  return { results, sectorHeat, earningsFetchFailedCount }
+  return { results, sectorHeat }
+}
+
+// Explicit, user-triggered earnings check — call this with whatever subset
+// of results the user has already filtered down to (not necessarily the
+// whole scan), typically right before deciding what to trade. Re-derives
+// grade and signalType afterward for each result, since both depend on
+// earnings (a newly-discovered CONFIRMED date inside the avoid window can
+// flip a grade or drop a signal that looked fine before earnings was
+// known). Mutates `results` in place; returns { fetchFailedCount } — see
+// earningsProvider.js's getEarningsMap for what that counts.
+export async function checkEarningsForResults(results) {
+  if (results.length === 0) return { fetchFailedCount: 0 }
+
+  const { map: earningsMap, fetchFailedCount } = await getEarningsMap(results.map((r) => r.symbol))
+
+  for (const r of results) {
+    const earnings = earningsMap[r.symbol] ?? { date: null, daysAway: null, source: 'UNKNOWN' }
+    r.earningsDate = earnings.date
+    r.earningsDaysAway = earnings.daysAway
+    r.earningsSource = earnings.source
+    const { grade, reasons } = gradeWeekHighSetup(r)
+    r.grade = grade
+    r.gradeReasons = reasons
+    r.signalType = classifySignalType(r)
+  }
+
+  return { fetchFailedCount }
 }
 
 function round(value, decimals = 2) {
