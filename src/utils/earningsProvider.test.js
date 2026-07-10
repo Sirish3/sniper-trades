@@ -46,12 +46,13 @@ describe('getEarningsMap — confirmed calendar (chunked market-wide calls, neve
     const dateStr = isoDaysFromToday(9)
     mockFinnhub({ calendarEntries: [{ symbol: 'AAPL', date: dateStr }, { symbol: 'MSFT', date: dateStr }] })
 
-    const map = await getEarningsMap(['AAPL', 'MSFT'])
+    const { map, fetchFailedCount } = await getEarningsMap(['AAPL', 'MSFT'])
 
     expect(map.AAPL).toEqual({ date: dateStr, daysAway: 9, source: 'CONFIRMED' })
     expect(map.MSFT.source).toBe('CONFIRMED')
     expect(historyCallsFor('AAPL')).toHaveLength(0)
     expect(historyCallsFor('MSFT')).toHaveLength(0)
+    expect(fetchFailedCount).toBe(0)
   })
 
   it('makes more than one calendar request (chunked, not a single wide request)', async () => {
@@ -66,18 +67,21 @@ describe('getEarningsMap — confirmed calendar (chunked market-wide calls, neve
   })
 
   it('returns an empty map without calling fetchFinnhub for an empty ticker list', async () => {
-    const map = await getEarningsMap([])
+    const { map, fetchFailedCount } = await getEarningsMap([])
 
     expect(map).toEqual({})
+    expect(fetchFailedCount).toBe(0)
     expect(fetchFinnhub).not.toHaveBeenCalled()
   })
 
   it('ignores a calendar entry dated in the past (already reported, nothing new scheduled)', async () => {
     mockFinnhub({ calendarEntries: [{ symbol: 'AAPL', date: isoDaysFromToday(-5) }], historyBySymbol: {} })
 
-    const map = await getEarningsMap(['AAPL'])
+    const { map, fetchFailedCount } = await getEarningsMap(['AAPL'])
 
     expect(map.AAPL).toEqual({ date: null, daysAway: null, source: 'UNKNOWN' })
+    // Finnhub genuinely answered with an empty history — not a fetch failure.
+    expect(fetchFailedCount).toBe(0)
   })
 })
 
@@ -95,20 +99,22 @@ describe('getEarningsMap — ESTIMATED fallback (per-symbol history, only for ti
       },
     })
 
-    const map = await getEarningsMap(['AAPL'])
+    const { map, fetchFailedCount } = await getEarningsMap(['AAPL'])
 
     expect(map.AAPL.source).toBe('ESTIMATED')
     expect(map.AAPL.date).not.toBeNull()
     expect(typeof map.AAPL.daysAway).toBe('number')
     expect(historyCallsFor('AAPL')).toHaveLength(1)
+    expect(fetchFailedCount).toBe(0)
   })
 
-  it('a ticker with no earnings history at all degrades to UNKNOWN', async () => {
+  it('a ticker with no earnings history at all degrades to UNKNOWN, not counted as a fetch failure', async () => {
     mockFinnhub({ calendarEntries: [], historyBySymbol: {} })
 
-    const map = await getEarningsMap(['NODATA'])
+    const { map, fetchFailedCount } = await getEarningsMap(['NODATA'])
 
     expect(map.NODATA).toEqual({ date: null, daysAway: null, source: 'UNKNOWN' })
+    expect(fetchFailedCount).toBe(0)
   })
 
   it('only fetches history for tickers missing a confirmed date, not ones already CONFIRMED', async () => {
@@ -118,7 +124,7 @@ describe('getEarningsMap — ESTIMATED fallback (per-symbol history, only for ti
       historyBySymbol: { MSFT: [{ period: '2025-12-31' }, { period: '2025-09-30' }] },
     })
 
-    const map = await getEarningsMap(['AAPL', 'MSFT'])
+    const { map } = await getEarningsMap(['AAPL', 'MSFT'])
 
     expect(map.AAPL.source).toBe('CONFIRMED')
     expect(map.MSFT.source).toBe('ESTIMATED')
@@ -134,28 +140,40 @@ describe('getEarningsMap — graceful degradation (Finnhub unreachable)', () => 
       return [{ period: '2025-12-31' }, { period: '2025-09-30' }]
     })
 
-    const map = await getEarningsMap(['AAPL'])
+    const { map, fetchFailedCount } = await getEarningsMap(['AAPL'])
 
     expect(map.AAPL.source).toBe('ESTIMATED')
     expect(console.error).toHaveBeenCalled()
+    // The per-symbol fallback itself succeeded — not a fetch failure even
+    // though the (separate) confirmed-calendar call did fail.
+    expect(fetchFailedCount).toBe(0)
   })
 
-  it('total Finnhub failure (calendar and per-symbol history both fail) degrades to UNKNOWN, never throws', async () => {
+  // FIX: a fetch failure (rate limit exhausted, network error, missing key)
+  // used to be indistinguishable from Finnhub genuinely confirming a ticker
+  // has no earnings history — both collapsed into the same UNKNOWN with no
+  // way to tell them apart. At real scan scale (thousands of tickers
+  // hitting the per-symbol fallback) a rate-limit outage could silently
+  // look identical to "confirmed no data for everyone." fetchFailedCount
+  // now makes that distinction visible.
+  it('total Finnhub failure (calendar and per-symbol history both fail) degrades to UNKNOWN and counts as fetch failures, never throws', async () => {
     fetchFinnhub.mockRejectedValue(new TypeError('fetch failed'))
 
-    const map = await getEarningsMap(['AAPL', 'MSFT'])
+    const { map, fetchFailedCount } = await getEarningsMap(['AAPL', 'MSFT'])
 
     expect(map).toEqual({
       AAPL: { date: null, daysAway: null, source: 'UNKNOWN' },
       MSFT: { date: null, daysAway: null, source: 'UNKNOWN' },
     })
+    expect(fetchFailedCount).toBe(2)
   })
 
-  it('fetchFinnhub returning null (its own "unavailable" signal) degrades to UNKNOWN, never throws', async () => {
+  it('fetchFinnhub returning null (its own "unavailable" signal) degrades to UNKNOWN and counts as a fetch failure, never throws', async () => {
     fetchFinnhub.mockResolvedValue(null)
 
-    const map = await getEarningsMap(['AAPL'])
+    const { map, fetchFailedCount } = await getEarningsMap(['AAPL'])
 
     expect(map.AAPL).toEqual({ date: null, daysAway: null, source: 'UNKNOWN' })
+    expect(fetchFailedCount).toBe(1)
   })
 })

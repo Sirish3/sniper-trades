@@ -137,10 +137,18 @@ async function fetchConfirmedCalendar() {
 
 // Per-symbol fallback for anything without a near-term confirmed date —
 // historical quarter-end dates, shifted by the approximate report lag.
+// `fetchFailed` distinguishes "Finnhub answered and this ticker genuinely
+// has no history" from "we couldn't get an answer at all" (missing key,
+// network error, or — the case that matters at real scale — the free
+// tier's rate/quota limit exhausted partway through a large scan's
+// thousands of per-symbol calls). Both used to collapse into the same
+// UNKNOWN with no way to tell them apart; a scan-wide rate-limit outage
+// looked identical to individually confirming thousands of tickers have
+// no earnings data, which isn't true.
 async function fetchApproxHistoricalReportDates(symbol) {
   const data = await fetchFinnhub(`/stock/earnings?symbol=${symbol}`)
-  if (!Array.isArray(data)) return []
-  return data
+  if (!Array.isArray(data)) return { dates: [], fetchFailed: true }
+  const dates = data
     .map((e) => e.period)
     .filter(Boolean)
     .map((period) => {
@@ -148,25 +156,33 @@ async function fetchApproxHistoricalReportDates(symbol) {
       d.setUTCDate(d.getUTCDate() + REPORT_LAG_DAYS_APPROX)
       return d
     })
+  return { dates, fetchFailed: false }
 }
 
 async function estimateOne(symbol) {
   try {
-    const historyDates = await fetchApproxHistoricalReportDates(symbol)
-    if (historyDates.length === 0) return { date: null, daysAway: null, source: 'UNKNOWN' }
+    const { dates: historyDates, fetchFailed } = await fetchApproxHistoricalReportDates(symbol)
+    if (historyDates.length === 0) return { date: null, daysAway: null, source: 'UNKNOWN', fetchFailed }
     const estimate = fmtDate(selfEstimateNextEarnings(historyDates))
-    return { date: estimate, daysAway: daysUntil(estimate), source: 'ESTIMATED' }
+    return { date: estimate, daysAway: daysUntil(estimate), source: 'ESTIMATED', fetchFailed: false }
   } catch {
-    return { date: null, daysAway: null, source: 'UNKNOWN' }
+    return { date: null, daysAway: null, source: 'UNKNOWN', fetchFailed: true }
   }
 }
 
 // Batched earnings lookup for a whole scan. Never throws: if Finnhub is
 // unreachable or returns something unexpected, every ticker degrades to
 // UNKNOWN (logged loudly) rather than failing the scan — unknown must
-// never bury a strong stock.
+// never bury a strong stock. Returns { map, fetchFailedCount } rather than
+// the bare map — fetchFailedCount is how many tickers landed on UNKNOWN
+// because a fetch genuinely failed (rate limit/network), not because
+// Finnhub confirmed there's no data. At small scan sizes this is normally
+// 0; at large ones (thousands of tickers needing the per-symbol fallback,
+// well past Finnhub's free-tier budget) it can climb fast — the caller
+// should surface it rather than let a budget exhaustion look identical to
+// "this stock genuinely has no earnings data."
 export async function getEarningsMap(tickers) {
-  if (tickers.length === 0) return {}
+  if (tickers.length === 0) return { map: {}, fetchFailedCount: 0 }
 
   let confirmedMap = {}
   try {
@@ -192,14 +208,20 @@ export async function getEarningsMap(tickers) {
   // free tier is 60 req/min, and this is the one path that's still
   // per-symbol; fetchFinnhub already retries on 429, but batching avoids
   // triggering a rate-limit storm in the first place.
+  let fetchFailedCount = 0
   for (let i = 0; i < needsEstimate.length; i += ESTIMATE_FETCH_CONCURRENCY) {
     const batch = needsEstimate.slice(i, i + ESTIMATE_FETCH_CONCURRENCY)
     const estimates = await Promise.all(batch.map(estimateOne))
-    batch.forEach((symbol, idx) => { result[symbol] = estimates[idx] })
+    batch.forEach((symbol, idx) => {
+      const { fetchFailed, ...info } = estimates[idx]
+      result[symbol] = info
+      if (fetchFailed) fetchFailedCount++
+    })
   }
 
   const counts = { CONFIRMED: 0, ESTIMATED: 0, UNKNOWN: 0 }
   for (const symbol of tickers) counts[result[symbol].source]++
-  console.info(`[earningsProvider] earnings: ${counts.CONFIRMED} confirmed / ${counts.ESTIMATED} estimated / ${counts.UNKNOWN} unknown (of ${tickers.length})`)
-  return result
+  const failureNote = fetchFailedCount > 0 ? ` — ${fetchFailedCount} of the ${counts.UNKNOWN} unknown are fetch failures (rate limit/network), not confirmed-empty` : ''
+  console.info(`[earningsProvider] earnings: ${counts.CONFIRMED} confirmed / ${counts.ESTIMATED} estimated / ${counts.UNKNOWN} unknown (of ${tickers.length})${failureNote}`)
+  return { map: result, fetchFailedCount }
 }

@@ -809,6 +809,7 @@ function WeekHighScreener() {
   const [progress, setProgress] = useState({ done: 0, total: 0 })
   const [results, setResults] = useState(null)
   const [sectorHeat, setSectorHeat] = useState(null)
+  const [earningsFetchFailedCount, setEarningsFetchFailedCount] = useState(0)
   const [error, setError] = useState(null)
 
   const [tradePlanLoading, setTradePlanLoading] = useState(false)
@@ -834,6 +835,7 @@ function WeekHighScreener() {
     setError(null)
     setResults(null)
     setSectorHeat(null)
+    setEarningsFetchFailedCount(0)
     setExpandedSymbol(null)
     setTradePlanError(null)
     setProgress({ done: 0, total: 0 })
@@ -848,9 +850,10 @@ function WeekHighScreener() {
       const union = [...unionMap.values()]
 
       const { results: scanResults } = await scanWeekHighs((done, total) => setProgress({ done, total }), union)
-      const { results: classified, sectorHeat: heat } = await classifyWeekHighResults(scanResults)
+      const { results: classified, sectorHeat: heat, earningsFetchFailedCount: failedCount } = await classifyWeekHighResults(scanResults)
       setResults(classified)
       setSectorHeat(heat)
+      setEarningsFetchFailedCount(failedCount)
       logBuyAlerts(computeBuyAlerts(classified, { portfolioSize, riskEnvironment: 'neutral', openPositions: loadPositions() }))
     } catch (err) {
       setError(err.message)
@@ -1083,6 +1086,14 @@ function WeekHighScreener() {
       </div>
 
       {error && <div className="analysis-error">{error}</div>}
+
+      {earningsFetchFailedCount > 0 && (
+        <div className="analysis-error">
+          Earnings data couldn&apos;t be fetched for {earningsFetchFailedCount} ticker{earningsFetchFailedCount === 1 ? '' : 's'} (rate
+          limit or network issue, not confirmed to have no earnings) — those show as unknown below and are treated
+          as such by grading. Rerun the scan, or scan a smaller universe, to get real coverage for them.
+        </div>
+      )}
 
       <SectorHeatStrip sectorHeat={sectorHeat} />
 

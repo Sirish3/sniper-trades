@@ -368,8 +368,11 @@ export async function classifyWeekHighResults(results) {
   }
 
   let earningsMap = {}
+  let earningsFetchFailedCount = 0
   try {
-    earningsMap = await getEarningsMap(results.map((r) => r.symbol))
+    const earningsResult = await getEarningsMap(results.map((r) => r.symbol))
+    earningsMap = earningsResult.map
+    earningsFetchFailedCount = earningsResult.fetchFailedCount
   } catch {
     earningsMap = {}
   }
@@ -390,7 +393,7 @@ export async function classifyWeekHighResults(results) {
     r.signalType = classifySignalType(r)
   }
 
-  return { results, sectorHeat }
+  return { results, sectorHeat, earningsFetchFailedCount }
 }
 
 function round(value, decimals = 2) {
