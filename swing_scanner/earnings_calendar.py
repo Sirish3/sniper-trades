@@ -25,6 +25,8 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+
+from finviz_snapshot import parse_snapshot_table
 from pathlib import Path
 
 CACHE_DIR = Path(__file__).parent / ".cache"
@@ -89,15 +91,6 @@ def _extract_earnings_events(html: str) -> list[dict]:
     return sorted(events, key=lambda e: e["date"])
 
 
-def _extract_snapshot_field(soup, label: str) -> str:
-    for div in soup.find_all("div", class_="snapshot-td-label"):
-        if div.get_text(strip=True) == label:
-            parent_td = div.find_parent("td")
-            val_td = parent_td.find_next_sibling("td") if parent_td else None
-            return val_td.get_text(strip=True) if val_td else ""
-    return ""
-
-
 def _estimate_next_earnings_date(events: list[dict]) -> date | None:
     """Historical-cadence estimate: last reported date + the average gap
     between the last few reports (falls back to a 91-day quarterly
@@ -124,9 +117,10 @@ def _fetch_one(ticker: str) -> EarningsInfo:
         events = _extract_earnings_events(html)
         prior_qtr_eps = f"{events[-1]['epsActual']:.2f}" if events and events[-1].get("epsActual") is not None else ""
 
-        est_eps = _extract_snapshot_field(soup, "EPS next Q")
+        snapshot = parse_snapshot_table(soup)
+        est_eps = snapshot.get("EPS next Q", "")
 
-        earnings_field = _extract_snapshot_field(soup, "Earnings")
+        earnings_field = snapshot.get("Earnings", "")
         before_after_match = re.search(r"(AMC|BMO)", earnings_field, re.IGNORECASE)
         before_after = before_after_match.group(1).upper() if before_after_match else ""
 

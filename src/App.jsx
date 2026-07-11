@@ -10,6 +10,7 @@ import EconomicCalendar from './components/EconomicCalendar'
 import EarningsCalendar from './components/EarningsCalendar'
 import ChartPatterns from './components/ChartPatterns'
 import ChartSetupAdmin from './components/ChartSetupAdmin'
+import FairValue from './components/FairValue'
 import { SearchIcon, LoaderIcon, SettingsIcon } from './components/Icons'
 import { analyzeTicker } from './utils/claudeApi'
 import { getTechnicalAnalysis } from './utils/marketData'
@@ -119,6 +120,12 @@ function App() {
         >
           Earnings
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'fairvalue' ? 'active' : ''}`}
+          onClick={() => setActiveTab('fairvalue')}
+        >
+          Fair Value
+        </button>
       </nav>
 
       <main className="app-main">
@@ -157,6 +164,7 @@ function App() {
         {activeTab === 'chartpatterns' && <ChartPatterns />}
         {activeTab === 'econcalendar' && <EconomicCalendar />}
         {activeTab === 'earnings' && <EarningsCalendar scanTickers={scannerTickers} />}
+        {activeTab === 'fairvalue' && <FairValue />}
         {activeTab === 'chartSetupsAdmin' && <ChartSetupAdmin apiKey={apiKey} />}
       </main>
 

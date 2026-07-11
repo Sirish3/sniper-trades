@@ -22,6 +22,7 @@ from data import bars_df_to_candles, get_daily_bars, get_tradable_universe
 from database import init_db
 from earnings_calendar import get_earnings_for_tickers
 from economic_calendar import filter_calendar, get_economic_calendar, next_high_impact_event
+from fair_value import get_fair_value
 from indicators import sma
 from levels import TRAIL_RULE_TEXT, position_size
 from pattern_scan import run_pattern_scan
@@ -229,6 +230,14 @@ def earnings_endpoint():
             for info in infos
         ],
     })
+
+
+@app.route("/api/fair-value/<ticker>", methods=["GET"])
+def fair_value_endpoint(ticker):
+    try:
+        return jsonify(get_fair_value(ticker))
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
 
 
 # ── Chart Patterns (manually curated setup gallery) ──────────────────────
