@@ -27,3 +27,18 @@ def parse_snapshot_table(soup) -> dict[str, str]:
         if val_td is not None:
             values[label] = val_td.get_text(strip=True)
     return values
+
+
+def fetch_snapshot(ticker: str) -> dict[str, str]:
+    """One-ticker convenience wrapper: fetches the quote page and parses
+    it. Returns {} on any failure (network error, ticker not found, page
+    layout surprise) rather than raising — callers scraping a peer group
+    of dozens of tickers (sector_benchmark.py) need one bad ticker to
+    degrade, not abort the whole batch, same contract as
+    earnings_calendar.py's per-ticker fetch."""
+    try:
+        from finvizfinance.util import web_scrap  # lazy import, see earnings_calendar.py's module docstring
+        soup = web_scrap(f"https://finviz.com/quote.ashx?t={ticker}")
+        return parse_snapshot_table(soup)
+    except Exception:
+        return {}

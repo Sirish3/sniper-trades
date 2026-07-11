@@ -13,6 +13,17 @@ const FLAG_LABELS = {
   STALE_ANNUAL_DATA: 'Most recent fiscal year ended over a year ago — FCF figures may be dated',
   INSUFFICIENT_TREND_DATA: 'Not enough consistent history to compute a growth trend',
   FINVIZ_UNAVAILABLE: 'Could not reach Finviz for multiples/context data',
+  LOW_CONFIDENCE_PEER_GROUP: 'Fewer than 8 sector peers had usable data for at least one multiple — sector-relative estimate is low-confidence',
+  INSUFFICIENT_OWN_HISTORY_DATA: "Not enough of this ticker's own price/fundamental history to compute an own-average multiple",
+}
+
+const MULTIPLE_LABELS = {
+  peTrailing: 'P/E',
+  priceToSales: 'P/S',
+  priceToFcf: 'P/FCF',
+  priceToBook: 'P/B',
+  evToEbitda: 'EV/EBITDA',
+  roe: 'ROE',
 }
 
 function fmtMoney(value) {
@@ -69,16 +80,19 @@ export default function FairValue() {
   const week = result?.weekRangeContext
   const mult = result?.multiplesContext
   const analyst = result?.analystSentiment
+  const methodA = result?.methodA
+  const methodB = result?.methodB
 
   return (
     <div className="backtester">
       <div className="bt-header-block">
         <div className="bt-title">Fair Value</div>
         <div className="bt-subtitle">
-          Three independent angles — FCF yield vs. this ticker&apos;s own history, relative multiples (context
-          only, no invented sector benchmark), and 52-week range — shown separately, never blended into one
-          number. Built entirely from Alpaca, Finnhub, and Finviz&apos;s free tiers; no analyst price target exists
-          free from any of them, so none is shown.
+          Two independent fair-value estimates — Method A (this ticker&apos;s own fundamentals x its sector peers&apos;
+          median multiple) and Method B (this ticker&apos;s own multiple, averaged over its own recent history) —
+          plus FCF yield/trend, relative multiples, and 52-week range as supporting context. Never blended into
+          one number. Built entirely from Alpaca, Finnhub, Finviz, and Wikipedia&apos;s free tiers; no analyst
+          price target exists free from any of them, so none is shown.
         </div>
       </div>
 
@@ -112,6 +126,65 @@ export default function FairValue() {
                 <div key={flag}>⚠ {FLAG_LABELS[flag] || flag}</div>
               ))}
             </div>
+          )}
+
+          {result.currentPrice != null && (
+            <div className="result-stats" style={{ marginBottom: '1rem' }}>
+              <Stat label="Current price" value={fmtMoney(result.currentPrice)} />
+            </div>
+          )}
+
+          <div className="bt-section-divider"><span>Method A — Sector-Relative</span></div>
+          {methodA?.available ? (
+            <>
+              <p className="section-empty">
+                Sector: {methodA.sector} · {methodA.peerUniverseSize} S&amp;P 500 / Nasdaq 100 peers in universe
+              </p>
+              <div className="result-stats">
+                {Object.entries(methodA.multiples).map(([field, m]) => (
+                  <Stat
+                    key={field}
+                    label={`${MULTIPLE_LABELS[field] || field} (peer median ${fmtNum(m.peerMedian)}, n=${m.peerCount}${m.lowConfidence ? ', low confidence' : ''})`}
+                    value={
+                      field === 'roe'
+                        ? fmtPct(m.peerMedian)
+                        : m.reason
+                          ? m.reason
+                          : `${fmtMoney(m.impliedFairValue)} (${fmtPct(m.pctFromCurrentPrice)})`
+                    }
+                    className={m.lowConfidence ? 'text-danger' : ''}
+                  />
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="section-empty">{methodA?.reason || 'Not available for this ticker.'}</p>
+          )}
+
+          <div className="bt-section-divider"><span>Method B — Own-History Reversion</span></div>
+          {methodB?.available ? (
+            <>
+              {['peTrailing', 'priceToFcf'].map((field) => {
+                const m = methodB[field]
+                if (!m?.available) {
+                  return (
+                    <p key={field} className="section-empty">
+                      {MULTIPLE_LABELS[field]}: {m?.reason || 'Not available for this ticker.'}
+                    </p>
+                  )
+                }
+                return (
+                  <div key={field} className="result-stats" style={{ marginBottom: '0.5rem' }}>
+                    <Stat label={`${MULTIPLE_LABELS[field]} — own avg (${m.windowStart} to ${m.windowEnd}, ${m.pointsUsed} pts)`} value={fmtNum(m.ownAvgMultiple)} />
+                    <Stat label={`${MULTIPLE_LABELS[field]} — current`} value={fmtNum(m.currentMultiple)} />
+                    <Stat label="Implied fair value" value={fmtMoney(m.impliedFairValue)} />
+                  </div>
+                )
+              })}
+              <p className="section-empty" style={{ marginTop: '0.5rem' }}>{methodB.note}</p>
+            </>
+          ) : (
+            <p className="section-empty">{methodB?.note}</p>
           )}
 
           <div className="bt-section-divider"><span>FCF Yield &amp; Trend</span></div>
@@ -161,7 +234,6 @@ export default function FairValue() {
             <Stat label="Gross margin" value={fmtPct(mult?.grossMarginPct)} />
             <Stat label="Operating margin" value={fmtPct(mult?.operatingMarginPct)} />
             <Stat label="Profit margin" value={fmtPct(mult?.profitMarginPct)} />
-            <Stat label="Sector P/E" value="not available (no free source)" />
           </div>
           <p className="section-empty" style={{ marginTop: '0.5rem' }}>{mult?.note}</p>
 
