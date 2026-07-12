@@ -16,9 +16,15 @@ second scrape.
 
 Confirmed live: the largest S&P 500 + Nasdaq 100 sector (Information
 Technology, ~80 constituents after the two indices are unioned) takes
-60-80+ seconds to scrape cold at the same 0.75s/request pacing
-earnings_calendar.py already uses to stay polite to Finviz. That cost is
-paid once per sector per cache TTL, not once per ticker lookup.
+60-80+ seconds to scrape in full at the same 0.75s/request pacing
+earnings_calendar.py already uses to stay polite to Finviz — which blows
+straight through Render's ~30s request timeout on a cold cache (confirmed
+live: a real 500 at exactly 30.4s). Peer scraping is capped to
+MAX_PEERS_TO_SCRAPE per sector for this reason, not for Finviz-politeness
+— a full sector isn't actually reachable within one request's time
+budget, however many peers this app is theoretically entitled to scrape.
+That capped cost is paid once per sector per cache TTL, not once per
+ticker lookup.
 """
 from __future__ import annotations
 
@@ -36,6 +42,14 @@ CACHE_TTL_SECONDS = 20 * 60 * 60  # ~daily, matches earnings_calendar.py — mul
 REQUEST_DELAY_SECONDS = 0.75      # same Finviz-politeness pacing as earnings_calendar.py
 
 MIN_PEERS_FOR_CONFIDENCE = 8  # below this (after excluding missing-data peers), flag LOW_CONFIDENCE_PEER_GROUP
+MAX_PEERS_TO_SCRAPE = 10      # confirmed live: a full-sector cold scrape (Information Technology, 81 peers)
+                               # took 60-80s, but Render's request timeout is a hard 30s (confirmed live via a
+                               # real 500 at exactly 30.4s). Also confirmed live that per-peer scrape cost runs
+                               # closer to ~1.7s (network + REQUEST_DELAY_SECONDS), not the ~0.85s a first pass
+                               # assumed — 15 peers alone ate 25.4s, leaving no room for the rest of the
+                               # request (Alpaca + Finnhub + the target ticker's own Finviz fetch). 10 peers
+                               # (~17s scrape) leaves real headroom while staying just above
+                               # MIN_PEERS_FOR_CONFIDENCE even if one or two fail to scrape.
 
 # Finviz snapshot label -> the numeric field name we compute medians for.
 MULTIPLE_FIELDS = {
@@ -85,7 +99,7 @@ def _fetch_sector_raw(sector: str) -> list[dict]:
     One bad peer (fetch failure, missing fields) doesn't drop it from the
     list — it's kept with whatever fields did resolve, None for the rest,
     so it can still contribute to multiples it does have data for."""
-    tickers = get_sector_peers(sector)
+    tickers = get_sector_peers(sector)[:MAX_PEERS_TO_SCRAPE]
     peers = []
     for i, ticker in enumerate(tickers):
         if i > 0:
