@@ -450,7 +450,12 @@ def _own_history_multiple(per_share_series: list[tuple[str, float]], bars) -> di
     for end_date, per_share in per_share_series:
         if per_share is None or per_share <= 0:
             continue
-        ts = pd.Timestamp(end_date)
+        # bars' index is tz-aware UTC (Alpaca returns ISO8601 timestamps
+        # with a Z suffix; pd.to_datetime keeps that tz in data.py), but a
+        # plain "YYYY-MM-DD" string parses to a tz-naive Timestamp —
+        # comparing the two raises "Invalid comparison between
+        # dtype=datetime64[ns, UTC] and Timestamp" (confirmed live).
+        ts = pd.Timestamp(end_date, tz="UTC")
         prior = closes[closes.index <= ts]
         if prior.empty:
             continue  # this TTM point predates Alpaca's available price history — skip rather than fabricate
