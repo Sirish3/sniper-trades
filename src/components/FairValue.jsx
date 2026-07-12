@@ -15,6 +15,7 @@ const FLAG_LABELS = {
   FINVIZ_UNAVAILABLE: 'Could not reach Finviz for multiples/context data',
   LOW_CONFIDENCE_PEER_GROUP: 'Fewer than 8 sector peers had usable data for at least one multiple — sector-relative estimate is low-confidence',
   INSUFFICIENT_OWN_HISTORY_DATA: "Not enough of this ticker's own price/fundamental history to compute an own-average multiple",
+  LOW_CONFIDENCE_COMPOSITE: 'Half or more of the methods feeding the composite range are themselves low-confidence',
 }
 
 const MULTIPLE_LABELS = {
@@ -82,17 +83,21 @@ export default function FairValue() {
   const analyst = result?.analystSentiment
   const methodA = result?.methodA
   const methodB = result?.methodB
+  const composite = result?.composite
+
+  const CONFIDENCE_CLASS = { HIGH: 'text-green', MODERATE: '', LOW: 'text-danger' }
 
   return (
     <div className="backtester">
       <div className="bt-header-block">
         <div className="bt-title">Fair Value</div>
         <div className="bt-subtitle">
-          Two independent fair-value estimates — Method A (this ticker&apos;s own fundamentals x its sector peers&apos;
-          median multiple) and Method B (this ticker&apos;s own multiple, averaged over its own recent history) —
-          plus FCF yield/trend, relative multiples, and 52-week range as supporting context. Never blended into
-          one number. Built entirely from Alpaca, Finnhub, Finviz, and Wikipedia&apos;s free tiers; no analyst
-          price target exists free from any of them, so none is shown.
+          A composite range synthesized from every fair-value method below — Method A (this ticker&apos;s own
+          fundamentals x its sector peers&apos; median multiple), Method B (this ticker&apos;s own multiple, averaged
+          over its own recent history), and FCF-yield reversion — weighted by sector, shown as a range, not a
+          single decimal-precision number. The composite never replaces the per-method detail; every input stays
+          visible below, unchanged. Built entirely from Alpaca, Finnhub, Finviz, and Wikipedia&apos;s free tiers; no
+          analyst price target exists free from any of them, so none is shown.
         </div>
       </div>
 
@@ -134,6 +139,31 @@ export default function FairValue() {
             </div>
           )}
 
+          <div className="bt-section-divider"><span>Composite Fair Value</span></div>
+          {composite?.available ? (
+            <>
+              <div className="result-stats">
+                <Stat label="Range" value={`${fmtMoney(composite.rangeLow)} – ${fmtMoney(composite.rangeHigh)}`} />
+                <Stat label="Midpoint" value={fmtMoney(composite.midpoint)} />
+                <Stat
+                  label="Current price vs. midpoint"
+                  value={result.currentPrice != null ? `${fmtMoney(result.currentPrice)} (${fmtPct(composite.pctFromMidpoint)})` : '—'}
+                />
+                <Stat
+                  label="Confidence"
+                  value={`${composite.confidence} (${composite.usableMethodCount} methods, shortest lookback ${composite.shortestLookback || '—'})`}
+                  className={CONFIDENCE_CLASS[composite.confidence] || ''}
+                />
+              </div>
+              {composite.agreement && <p className="section-empty" style={{ marginTop: '0.5rem' }}>{composite.agreement}</p>}
+              <p className="section-empty">
+                Weighted by sector ({methodA?.sector || '—'}): {composite.methodsUsed.map((k) => MULTIPLE_LABELS[k.replace(/^method[AB]_/, '')] || (k === 'fcfYieldReversion' ? 'FCF yield reversion' : k)).join(', ')}
+              </p>
+            </>
+          ) : (
+            <p className="section-empty">{composite?.reason || 'Not available for this ticker.'}</p>
+          )}
+
           <div className="bt-section-divider"><span>Method A — Sector-Relative</span></div>
           {methodA?.available ? (
             <>
@@ -164,7 +194,7 @@ export default function FairValue() {
           <div className="bt-section-divider"><span>Method B — Own-History Reversion</span></div>
           {methodB?.available ? (
             <>
-              {['peTrailing', 'priceToFcf'].map((field) => {
+              {['peTrailing', 'priceToFcf', 'priceToSales'].map((field) => {
                 const m = methodB[field]
                 if (!m?.available) {
                   return (

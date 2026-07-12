@@ -153,6 +153,113 @@ MULTIPLE_BASE_LABELS = {
     "priceToBook": "book value",
 }
 
+# Composite fair-value weighting, sector by sector — shown to and confirmed
+# with the user before implementation. Keys are "methodA_<field>",
+# "methodB_<field>", or "fcfYieldReversion"; values are base weights before
+# the runtime confidence downweight (see CONFIDENCE_DOWNWEIGHT_MULTIPLIER).
+# A method absent from a sector's dict is never a bug — it just isn't
+# computed for that sector (e.g. Method B has no P/B or EV/EBITDA
+# own-history reversion, so Financials/Industrials/Materials/Energy get no
+# Method B entries at all here) and is excluded from that sector's
+# composite entirely, not silently zero-weighted.
+#
+# The rules that generated every row below (so a new sector can be added
+# consistently rather than guessed at):
+#   1. Every field in SECTOR_MULTIPLE_MAP gets Method A at some weight.
+#   2. If Method B also computes that field (peTrailing/priceToFcf/
+#      priceToSales) AND it's the sector's non-FCF anchor (P/E or P/S, not
+#      P/FCF), both A and B get full weight (1.0) — same signal, deeper
+#      own-history version, no redundancy concern.
+#   3. If a sector's map includes priceToFcf ALONGSIDE a distinct non-FCF
+#      anchor (P/S or P/E), priceToFcf (A&B) is downgraded to 0.5: it
+#      measures nearly the same thing as fcfYieldReversion (FCF relative
+#      to price), which gets the full 1.0 instead as the deeper-history
+#      version of that same signal — full weight on both would triple-
+#      count one economic signal (Tech: Info Tech, Health Care, Consumer
+#      Discretionary/Staples).
+#   4. If priceToFcf is a sector's ONLY mapped multiple (Real Estate),
+#      there's no distinct anchor being crowded out, so no downgrade —
+#      Method A, Method B, and fcfYieldReversion all stay at 1.0.
+#   5. EV/EBITDA and P/B never get downgraded for FCF overlap — different
+#      signal family (EV/EBITDA ignores capex/D&A entirely; P/B is a
+#      balance-sheet multiple), always full weight within their sector.
+#   6. fcfYieldReversion gets 1.0 wherever the sector's own map already
+#      includes priceToFcf (FCF is established as that sector's natural
+#      lens); 0.5 everywhere else — Financials (interest income, not FCF,
+#      drives bank valuation), and the capex-heavy/cyclical sectors
+#      (Utilities, Industrials, Materials, Energy, Communication Services)
+#      where heavy or lumpy capex structurally distorts raw FCF as a
+#      lens even when the underlying business is healthy.
+#   7. ROE and PEG never enter the composite — ROE is context alongside
+#      Financials' P/B (never itself priced, see SECTOR_MULTIPLE_MAP);
+#      PEG would need an assumed forward growth rate to invert into a
+#      price, a projection nothing else in this app makes.
+SECTOR_COMPOSITE_WEIGHTS = {
+    "Information Technology": {
+        "methodA_priceToSales": 1.0,
+        "methodB_priceToSales": 1.0,
+        "fcfYieldReversion": 1.0,
+        "methodA_priceToFcf": 0.5,
+        "methodB_priceToFcf": 0.5,
+    },
+    "Health Care": {
+        "methodA_peTrailing": 1.0,
+        "methodB_peTrailing": 1.0,
+        "fcfYieldReversion": 1.0,
+        "methodA_priceToFcf": 0.5,
+        "methodB_priceToFcf": 0.5,
+    },
+    "Consumer Discretionary": {
+        "methodA_peTrailing": 1.0,
+        "methodB_peTrailing": 1.0,
+        "fcfYieldReversion": 1.0,
+        "methodA_priceToFcf": 0.5,
+        "methodB_priceToFcf": 0.5,
+    },
+    "Consumer Staples": {
+        "methodA_peTrailing": 1.0,
+        "methodB_peTrailing": 1.0,
+        "fcfYieldReversion": 1.0,
+        "methodA_priceToFcf": 0.5,
+        "methodB_priceToFcf": 0.5,
+    },
+    "Financials": {
+        "methodA_priceToBook": 1.0,
+        "fcfYieldReversion": 0.5,
+    },
+    "Utilities": {
+        "methodA_peTrailing": 1.0,
+        "methodB_peTrailing": 1.0,
+        "fcfYieldReversion": 0.5,
+    },
+    "Real Estate": {
+        "methodA_priceToFcf": 1.0,
+        "methodB_priceToFcf": 1.0,
+        "fcfYieldReversion": 1.0,
+    },
+    "Industrials": {
+        "methodA_evToEbitda": 1.0,
+        "fcfYieldReversion": 0.5,
+    },
+    "Materials": {
+        "methodA_evToEbitda": 1.0,
+        "fcfYieldReversion": 0.5,
+    },
+    "Energy": {
+        "methodA_evToEbitda": 1.0,
+        "fcfYieldReversion": 0.5,
+    },
+    "Communication Services": {
+        "methodA_peTrailing": 1.0,
+        "methodB_peTrailing": 1.0,
+        "methodA_evToEbitda": 1.0,
+        "fcfYieldReversion": 0.5,
+    },
+}
+
+CONFIDENCE_DOWNWEIGHT_MULTIPLIER = 0.5  # a method flagged low-confidence upstream still counts, just at half weight
+MIN_USABLE_METHODS_FOR_COMPOSITE = 2    # fewer real numbers than this and a "composite" is just relabeling one guess
+
 # XBRL concept tags, in priority order — confirmed live against both AAPL
 # (large-cap, "clean" tagging) and SATS (thin-coverage, different tagging
 # style entirely) to make sure this isn't tuned to one filer's habits.
@@ -308,6 +415,17 @@ def _compute_fcf_yield_trend(figures: list[AnnualFigures], market_cap: float | N
         years_span = int(latest.year) - int(oldest_in_window.year)
         trend = _cagr(oldest_in_window.fcf, latest.fcf, years_span) if years_span > 0 else None
 
+    # Implied fair value: if the yield reverted to its own average (i.e.
+    # the market paid its historically-typical price per dollar of FCF for
+    # this ticker), what market cap/share price would today's FCF imply?
+    # A negative FCF or a non-positive average yield makes this undefined —
+    # same guard as Method A/B's negative-fundamental checks, not shown as
+    # a number rather than shown as a nonsensical negative "fair value."
+    implied_fair_value = None
+    if avg_yield is not None and avg_yield > 0 and latest.fcf > 0 and latest.diluted_shares:
+        implied_market_cap = latest.fcf / (avg_yield / 100)
+        implied_fair_value = implied_market_cap / latest.diluted_shares
+
     return {
         "available": True,
         "asOfFiscalYear": latest.year,
@@ -324,6 +442,7 @@ def _compute_fcf_yield_trend(figures: list[AnnualFigures], market_cap: float | N
         ),
         "fcfCagrPct": round(trend * 100, 2) if trend is not None else None,
         "yearsOfHistory": len(figures),
+        "impliedFairValue": round(implied_fair_value, 2) if implied_fair_value is not None else None,
     }
 
 
@@ -670,6 +789,151 @@ def _compute_method_a(
     }
 
 
+# ---------------------------------------------------------------------------
+# Composite: synthesizes Method A, Method B, and FCF-yield reversion into one
+# range using SECTOR_COMPOSITE_WEIGHTS — see that table's own docstring for
+# the rules that generated it. Never replaces the per-method detail above,
+# which stays visible unchanged; this is a layer on top.
+# ---------------------------------------------------------------------------
+
+def _weighted_median(entries: list[dict]) -> float:
+    """The value at which cumulative weight first reaches half the total —
+    reduces to a normal median when weights are equal, but shifts toward
+    higher-weighted (primary, high-confidence) values without being as
+    fragile to a single outlier as a weighted MEAN would be (one wildly
+    off method can't drag the composite the way it could drag an average)."""
+    sorted_entries = sorted(entries, key=lambda e: e["value"])
+    total_weight = sum(e["weight"] for e in sorted_entries)
+    cumulative = 0.0
+    for entry in sorted_entries:
+        cumulative += entry["weight"]
+        if cumulative >= total_weight / 2:
+            return entry["value"]
+    return sorted_entries[-1]["value"]
+
+
+def _format_lookback(days: int) -> str:
+    if days < 60:
+        return f"~{days}d"
+    months = round(days / 30)
+    if months < 24:
+        return f"~{months}mo"
+    return f"~{round(months / 12, 1)}y"
+
+
+def _compute_composite(
+    sector: str | None,
+    method_a: dict,
+    method_b: dict,
+    fcf_yield_trend: dict,
+    current_price: float | None,
+) -> dict:
+    if sector is None:
+        return {"available": False, "reason": "Ticker not in the S&P 500 / Nasdaq 100 sector universe this app tracks"}
+
+    weight_table = SECTOR_COMPOSITE_WEIGHTS.get(sector)
+    if not weight_table:
+        return {"available": False, "reason": f"No composite weighting configured for sector '{sector}'"}
+
+    entries: list[dict] = []
+    today = date.today()
+
+    if method_a.get("available"):
+        for field, m in method_a.get("multiples", {}).items():
+            base_weight = weight_table.get(f"methodA_{field}")
+            if base_weight is None or m.get("impliedFairValue") is None:
+                continue  # roe (never priced) always lands here since it has no impliedFairValue key at all
+            low_conf = bool(m.get("lowConfidence"))
+            entries.append({
+                "methodKey": f"methodA_{field}",
+                "value": m["impliedFairValue"],
+                "weight": base_weight * (CONFIDENCE_DOWNWEIGHT_MULTIPLIER if low_conf else 1.0),
+                "lowConfidence": low_conf,
+                "lookbackDays": None,  # Method A is cross-sectional (peer comparison), not a time series
+            })
+
+    if method_b.get("available"):
+        for field in ("peTrailing", "priceToFcf", "priceToSales"):
+            m = method_b.get(field) or {}
+            if not m.get("available") or m.get("impliedFairValue") is None:
+                continue
+            base_weight = weight_table.get(f"methodB_{field}")
+            if base_weight is None:
+                continue
+            # Met the hard floor to be "available" at all (>= MIN_TTM_POINTS_OWN_HISTORY)
+            # but still thin at exactly the floor — one point more is treated as solid.
+            low_conf = m.get("pointsUsed", 0) < MIN_TTM_POINTS_OWN_HISTORY + 1
+            window_start = datetime.strptime(m["windowStart"], "%Y-%m-%d").date()
+            entries.append({
+                "methodKey": f"methodB_{field}",
+                "value": m["impliedFairValue"],
+                "weight": base_weight * (CONFIDENCE_DOWNWEIGHT_MULTIPLIER if low_conf else 1.0),
+                "lowConfidence": low_conf,
+                "lookbackDays": (today - window_start).days,
+            })
+
+    if fcf_yield_trend.get("available") and fcf_yield_trend.get("impliedFairValue") is not None:
+        base_weight = weight_table.get("fcfYieldReversion")
+        if base_weight is not None:
+            years_used = min(fcf_yield_trend.get("yearsOfHistory", 0), FCF_YIELD_HISTORY_YEARS)
+            low_conf = fcf_yield_trend.get("yearsOfHistory", 0) < MIN_ANNUAL_YEARS_FOR_TREND
+            entries.append({
+                "methodKey": "fcfYieldReversion",
+                "value": fcf_yield_trend["impliedFairValue"],
+                "weight": base_weight * (CONFIDENCE_DOWNWEIGHT_MULTIPLIER if low_conf else 1.0),
+                "lowConfidence": low_conf,
+                "lookbackDays": years_used * 365,
+            })
+
+    if len(entries) < MIN_USABLE_METHODS_FOR_COMPOSITE:
+        return {
+            "available": False,
+            "reason": f"Only {len(entries)} usable fair-value method(s) for this ticker — need at least "
+                      f"{MIN_USABLE_METHODS_FOR_COMPOSITE} to synthesize a composite",
+        }
+
+    values = [e["value"] for e in entries]
+    range_low, range_high = round(min(values), 2), round(max(values), 2)
+    midpoint = round(_weighted_median(entries), 2)
+
+    agreement = None
+    if current_price:
+        total = len(values)
+        below = sum(1 for v in values if v < current_price)
+        above = sum(1 for v in values if v > current_price)
+        if below == total:
+            agreement = f"{total}/{total} methods point below current price"
+        elif above == total:
+            agreement = f"{total}/{total} methods point above current price"
+        else:
+            agreement = f"{below}/{total} below, {above}/{total} above current price — methods disagree on direction"
+
+    low_conf_count = sum(1 for e in entries if e["lowConfidence"])
+    usable_count = len(entries)
+    if usable_count < MIN_USABLE_METHODS_FOR_COMPOSITE or low_conf_count / usable_count > 0.5:
+        confidence = "LOW"
+    elif low_conf_count > 0:
+        confidence = "MODERATE"
+    else:
+        confidence = "HIGH"
+
+    lookback_days_list = [e["lookbackDays"] for e in entries if e["lookbackDays"] is not None]
+
+    return {
+        "available": True,
+        "rangeLow": range_low,
+        "rangeHigh": range_high,
+        "midpoint": midpoint,
+        "pctFromMidpoint": round((current_price - midpoint) / midpoint * 100, 2) if current_price else None,
+        "agreement": agreement,
+        "confidence": confidence,
+        "usableMethodCount": usable_count,
+        "lowConfidenceMethodCount": low_conf_count,
+        "shortestLookback": _format_lookback(min(lookback_days_list)) if lookback_days_list else None,
+        "methodsUsed": [e["methodKey"] for e in entries],
+    }
+
+
 def get_fair_value(ticker: str) -> dict:
     ticker = ticker.upper()
     flags: list[str] = []
@@ -757,13 +1021,18 @@ def get_fair_value(ticker: str) -> dict:
     fcf_ttm = sorted(
         (d, ocf_ttm[d] - capex_ttm[d]) for d in (ocf_ttm.keys() & capex_ttm.keys())
     )
+    revenue_ttm = _ttm_series(
+        _discrete_quarterly_series(quarterly_filings, annual_filings, "ic", CONCEPT_CANDIDATES["revenue"])
+    )
 
     method_b_pe = _own_history_multiple(_per_share_ttm_series(net_income_ttm, shares_series), bars)
     method_b_pfcf = _own_history_multiple(_per_share_ttm_series(fcf_ttm, shares_series), bars)
+    method_b_ps = _own_history_multiple(_per_share_ttm_series(revenue_ttm, shares_series), bars)
     method_b = {
-        "available": bool(method_b_pe.get("available") or method_b_pfcf.get("available")),
+        "available": bool(method_b_pe.get("available") or method_b_pfcf.get("available") or method_b_ps.get("available")),
         "peTrailing": method_b_pe,
         "priceToFcf": method_b_pfcf,
+        "priceToSales": method_b_ps,
         "note": "Real matched daily price vs. reconstructed trailing-twelve-month fundamentals at each of this "
                 "ticker's own past ~quarterly points. Capped to Alpaca's free-tier price depth (confirmed live: "
                 "~13 months, not the years a 5y/10y/max lookback would need) — windowStart/windowEnd below show "
@@ -782,9 +1051,14 @@ def get_fair_value(ticker: str) -> dict:
 
     recommendations = get_recommendation_trend(ticker)
 
+    composite = _compute_composite(sector, method_a, method_b, fcf_yield_trend, current_price)
+    if composite.get("confidence") == "LOW":
+        flags.append("LOW_CONFIDENCE_COMPOSITE")
+
     return {
         "ticker": ticker,
         "currentPrice": current_price,
+        "composite": composite,
         "methodA": method_a,
         "methodB": method_b,
         "weekRangeContext": week_range,
