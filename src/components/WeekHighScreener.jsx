@@ -441,8 +441,6 @@ function computeBuyAlerts(results, portfolioOptions) {
 
 const SECTOR_STATUS_CLS = { HOT: 'sector-status-hot', WARM: 'sector-status-warm', COLD: 'sector-status-cold' }
 const ENTRY_SCORE_CLS = { A: 'entry-score-a', B: 'entry-score-b', C: 'entry-score-c', D: 'entry-score-d' }
-const ENTRY_SCORE_CHIP_CLS = { A: 'summary-chip-buy', B: 'summary-chip-buy', C: 'summary-chip-watch', D: 'summary-chip-avoid' }
-const FACTOR_POINT_CLS = { 2: 'text-green', 1: 'text-muted', 0: 'text-danger' }
 
 function RegimeStrip({ regime }) {
   if (!regime) return null
@@ -452,7 +450,7 @@ function RegimeStrip({ regime }) {
       <div className="sector-heat-header">
         <span className="market-banner-title">Entry Filter Regime Check</span>
         <span className="sector-heat-summary text-muted">
-          Feeds the Entry Score (factor 10) and, through it, position sizing — see each card&apos;s Entry Filter for
+          Feeds the Entry Score (factor 11) and, through it, position sizing — see each card&apos;s Entry Filter for
           the per-stock sector fit.
         </span>
       </div>
@@ -464,12 +462,19 @@ function RegimeStrip({ regime }) {
   )
 }
 
-function EntryFilterRuleList({ entryFilter }) {
+// One consolidated block per stock, per the output-format spec — nothing
+// repeated that's already visible in the card's main result-stats grid
+// above (raw RSI/ADX/volume/etc. values live there; this shows only
+// conclusions: grade, stage, strongest/weakest factor LABELS, one
+// deterministic risk sentence, and unresolved watch-outs).
+function EntryFilterBlock({ r, portfolioSize }) {
+  const entryFilter = r.entryFilter
   if (!entryFilter) return null
+
   if (!entryFilter.eligible) {
     return (
       <div className="entry-filter-rules">
-        <p className="section-empty">Dropped — failed a hard filter (Step 2), not scored:</p>
+        <p className="section-empty">Dropped — failed a hard filter (Step 2), not scored or staged:</p>
         {entryFilter.failures.map((f) => (
           <div key={f} className="entry-filter-rule">
             <span className="text-danger">✗</span>
@@ -479,48 +484,82 @@ function EntryFilterRuleList({ entryFilter }) {
       </div>
     )
   }
+
+  const simple = computeSimpleTradePlan(r, portfolioSize)
+
   return (
     <div className="entry-filter-rules">
-      {entryFilter.factors.map((f) => (
-        <div key={f.n} className="entry-filter-rule">
-          <span className={FACTOR_POINT_CLS[f.points]}>{f.points}/2</span>
-          <span className="entry-filter-rule-label">{f.n}. {f.label}</span>
-          <span className={`mono ${FACTOR_POINT_CLS[f.points]}`}>{f.detail}</span>
-        </div>
-      ))}
+      <p>
+        <span className={`sector-status-tag ${ENTRY_SCORE_CLS[entryFilter.grade]}`}>
+          Grade {entryFilter.grade} ({entryFilter.score}/24)
+        </span>{' '}
+        <span className="sector-status-tag sector-status-warm">Stage: {entryFilter.stage}</span>
+      </p>
+      {simple.viable ? (
+        <p className="mono">
+          Entry ${simple.entryPrice.toFixed(2)} | Stop ${simple.stopPrice.toFixed(2)} ({simple.stopMethod}, -{simple.riskPct.toFixed(1)}%) |
+          Size {simple.shares} sh / ${(simple.shares * simple.entryPrice).toLocaleString()} (risking {simple.accountRiskPct}% = ${simple.dollarRisk.toLocaleString()})
+        </p>
+      ) : (
+        <p className="analysis-error">Not sized: {simple.reason}</p>
+      )}
+      {entryFilter.strengths.length > 0 && <p>Strongest factors: {entryFilter.strengths.join(', ')}</p>}
+      {entryFilter.weaknesses.length > 0 && <p>Weakest factors: {entryFilter.weaknesses.join(', ')}</p>}
+      <p>Key risk: {entryFilter.keyRisk}</p>
+      {entryFilter.watchOuts.length > 0 && <p className="text-muted">Watch-outs: {entryFilter.watchOuts.join('; ')}</p>}
     </div>
   )
 }
 
-// Ranked table per the scoring model's final ask: every qualifying
-// (hard-filter-eligible) stock, ranked by score descending. A separate view
-// from BuyListSummary/verdict.js — this is specifically the scoring model's
-// own ranking, not the grade-based verdict.
-function EntryFilterSummary({ results, onSelect }) {
-  const qualifying = results
-    .filter((r) => r.entryFilter?.eligible)
+// Ranked table + dropped list per the scoring model's final ask: every
+// qualifying (hard-filter-eligible) stock ranked by score descending, then
+// every dropped stock with which hard filter failed. A separate view from
+// BuyListSummary/verdict.js — this is specifically the scoring model's own
+// ranking, not the grade-based verdict.
+function EntryFilterSummary({ results, onSelect, portfolioSize }) {
+  const withFilter = results.filter((r) => r.entryFilter != null)
+  const qualifying = withFilter
+    .filter((r) => r.entryFilter.eligible)
     .sort((a, b) => b.entryFilter.score - a.entryFilter.score)
+  const dropped = withFilter.filter((r) => !r.entryFilter.eligible)
 
-  if (qualifying.length === 0) return null
+  if (qualifying.length === 0 && dropped.length === 0) return null
 
   return (
     <div className="result-card buy-list-summary">
       <h3 className="result-card-title">Entry Score Ranking <span className="text-muted">({qualifying.length} qualifying)</span></h3>
-      <div className="summary-row">
-        <div className="summary-chip-list">
-          {qualifying.map((r) => (
-            <button
-              type="button"
-              key={r.symbol}
-              className={`summary-chip ${ENTRY_SCORE_CHIP_CLS[r.entryFilter.grade]}`}
-              onClick={() => onSelect(r.symbol)}
-              title={r.entryFilter.strengths.join(', ')}
-            >
-              {r.symbol} <span className="text-muted">{r.entryFilter.grade} · {r.entryFilter.score}/20</span>
-            </button>
-          ))}
+      {qualifying.length > 0 && (
+        <div className="scanner-table-wrap">
+          <table className="scanner-table">
+            <thead>
+              <tr>
+                <th>Ticker</th><th>Grade</th><th>Score</th><th>Stage</th><th>Entry</th><th>Stop</th><th>Risk $</th>
+              </tr>
+            </thead>
+            <tbody>
+              {qualifying.map((r) => {
+                const simple = computeSimpleTradePlan(r, portfolioSize)
+                return (
+                  <tr key={r.symbol} onClick={() => onSelect(r.symbol)} style={{ cursor: 'pointer' }}>
+                    <td className="mono">{r.symbol}</td>
+                    <td><span className={`sector-status-tag ${ENTRY_SCORE_CLS[r.entryFilter.grade]}`}>{r.entryFilter.grade}</span></td>
+                    <td className="mono">{r.entryFilter.score}/24</td>
+                    <td>{r.entryFilter.stage}</td>
+                    <td className="mono">{simple.viable ? `$${simple.entryPrice.toFixed(2)}` : '—'}</td>
+                    <td className="mono">{simple.viable ? `$${simple.stopPrice.toFixed(2)}` : '—'}</td>
+                    <td className="mono">{simple.viable ? `$${simple.dollarRisk.toLocaleString()}` : '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
-      </div>
+      )}
+      {dropped.length > 0 && (
+        <p className="section-empty" style={{ marginTop: '0.75rem' }}>
+          {dropped.map((r) => `${r.symbol} — dropped: ${r.entryFilter.failures[0]}`).join('. ')}
+        </p>
+      )}
     </div>
   )
 }
@@ -658,7 +697,7 @@ function ResultCard({ result, expanded, onToggle, analysisOpen, onToggleAnalysis
         )}
         {r.entryFilter && (
           <span className={`sector-status-tag ${r.entryFilter.eligible ? ENTRY_SCORE_CLS[r.entryFilter.grade] ?? '' : 'sector-status-cold'}`}>
-            {r.entryFilter.eligible ? `Entry Score: ${r.entryFilter.grade} (${r.entryFilter.score}/20)` : 'Entry Filter: dropped'}
+            {r.entryFilter.eligible ? `Entry Score: ${r.entryFilter.grade} (${r.entryFilter.score}/24)` : 'Entry Filter: dropped'}
           </span>
         )}
       </div>
@@ -772,56 +811,7 @@ function ResultCard({ result, expanded, onToggle, analysisOpen, onToggleAnalysis
 
       {entryFilterOpen && r.entryFilter && (
         <div className="trade-plan-panel">
-          {r.entryFilter.eligible && (
-            <p className="section-empty">
-              {r.entryFilter.strengths.length > 0 && <>Strongest: {r.entryFilter.strengths.join(', ')}. </>}
-              {r.entryFilter.weaknesses.length > 0 && <>Weakest: {r.entryFilter.weaknesses.join(', ')}.</>}
-            </p>
-          )}
-          <EntryFilterRuleList entryFilter={r.entryFilter} />
-          {r.entryFilter.eligible && (() => {
-            const simple = computeSimpleTradePlan(r, portfolioSize)
-            return (
-              <>
-                <p className="section-empty" style={{ marginTop: '0.5rem' }}>
-                  Quick-reference sizing (max of 1.5x ATR / 5% below entry, risk% by grade: A/B 1%, C 0.5%, D skip) —
-                  separate from the fuller stop/size/trim plan above.
-                </p>
-                {simple.viable ? (
-                  <div className="result-stats">
-                    <div className="result-stat">
-                      <span className="result-stat-label">Entry</span>
-                      <span className="result-stat-value mono">${simple.entryPrice.toFixed(2)}</span>
-                    </div>
-                    <div className="result-stat">
-                      <span className="result-stat-label">Stop ({simple.stopMethod}, wider)</span>
-                      <span className="result-stat-value mono text-danger">
-                        ${simple.stopPrice.toFixed(2)} <span className="text-muted">(-{simple.riskPct.toFixed(1)}%)</span>
-                      </span>
-                    </div>
-                    <div className="result-stat">
-                      <span className="result-stat-label">1.5x ATR stop</span>
-                      <span className="result-stat-value mono">${simple.atrStopPrice.toFixed(2)}</span>
-                    </div>
-                    <div className="result-stat">
-                      <span className="result-stat-label">5% stop</span>
-                      <span className="result-stat-value mono">${simple.fixedStopPrice.toFixed(2)}</span>
-                    </div>
-                    <div className="result-stat">
-                      <span className="result-stat-label">Shares ({simple.accountRiskPct}% risk)</span>
-                      <span className="result-stat-value mono">{simple.shares}</span>
-                    </div>
-                    <div className="result-stat">
-                      <span className="result-stat-label">Dollar risk</span>
-                      <span className="result-stat-value mono">${simple.dollarRisk.toLocaleString()} ({simple.dollarRiskPct.toFixed(2)}%)</span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="analysis-error">Not viable: {simple.reason}</p>
-                )}
-              </>
-            )
-          })()}
+          <EntryFilterBlock r={r} portfolioSize={portfolioSize} />
         </div>
       )}
 
@@ -1146,11 +1136,12 @@ function WeekHighScreener() {
           Classifies every scanned stock into a breakout/retest/watch/approaching signal, grades the
           setup A+ through C (volume, RS rank, RSI, EMA stack, ADX, Alligator phase, sector heat,
           earnings distance), and — on request — builds a full stop/size/trim trade plan with a
-          deterministic thesis. Each card also gets a separate Entry Score (0-20, graded A-D): 4 hard
-          filters gate eligibility (52W-high proximity, non-serial breakout, MACD/EMA trend, liquidity),
-          then 10 factors — including market/sector regime fit — are scored 0-2 each and ranked, plus a
-          simple quick-reference stop/size number — see &quot;Show Entry Filter&quot; on any card. All
-          computed locally from Alpaca/Finnhub data; no AI calls.
+          deterministic thesis. Each card also gets a separate Entry Score (0-24, graded A-D): 3 hard
+          filters gate eligibility (52W-high proximity, MACD/EMA trend, $15M+/day liquidity), a
+          best-effort Wyckoff/Weinstein market stage is classified (accumulation/markup/distribution/
+          decline), then 11 factors — including serial-breakout history and market/sector regime fit —
+          are scored 0-2 each, plus a simple quick-reference stop/size number — see &quot;Show Entry
+          Filter&quot; on any card. All computed locally from Alpaca/Finnhub data; no AI calls.
         </p>
 
         <h3 className="result-card-title">Universe</h3>
@@ -1407,7 +1398,7 @@ function WeekHighScreener() {
       {earningsCheckError && <div className="analysis-error">{earningsCheckError}</div>}
 
       {results && <BuyListSummary buckets={buyListBuckets} onSelect={handleSelectFromSummary} />}
-      {results && <EntryFilterSummary results={filteredResults} onSelect={handleSelectFromSummary} />}
+      {results && <EntryFilterSummary results={filteredResults} onSelect={handleSelectFromSummary} portfolioSize={portfolioSize} />}
 
       {results && filteredResults.length > 0 && (
         <div className="result-card scan-summary">

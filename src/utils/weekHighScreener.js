@@ -22,25 +22,27 @@ const BASE_LOOKBACK_MIN_DAYS = 30 // ~6 weeks
 const BASE_LOOKBACK_MAX_DAYS = 40 // ~8 weeks
 const DOLLAR_VOLUME_WINDOW = 20
 
-// True if no OTHER day in the trailing `SERIAL_HIGH_LOOKBACK_DAYS` window
-// (excluding today) was ALSO a new 52-week high — i.e. today's high isn't a
-// repeated/serial new-high maker. Returns null if there's not enough history
-// to check the full window. Each candidate day's "prior high" uses whatever
-// trailing history is actually available up to HIGH_LOOKBACK bars (same
-// graceful-degradation approach as isNewHigh/daysSincePeakHigh above) rather
-// than hard-requiring a full 252+63 bars, which this app's ~370-calendar-day
+// How many OTHER days in the trailing `SERIAL_HIGH_LOOKBACK_DAYS` window
+// (excluding today) were ALSO a new 52-week high — 0 means today's high
+// isn't a repeated/serial new-high maker, higher counts mean it's one of
+// several recent highs. Returns null if there's not enough history to check
+// the full window. Each candidate day's "prior high" uses whatever trailing
+// history is actually available up to HIGH_LOOKBACK bars (same graceful-
+// degradation approach as isNewHigh/daysSincePeakHigh above) rather than
+// hard-requiring a full 252+63 bars, which this app's ~370-calendar-day
 // Alpaca fetch (screener.js) never has — this trades a small amount of edge
 // accuracy on the earliest days of the window for actually being computable
 // at all, rather than being permanently null for every single stock.
-function isFirstNewHighIn3Months(highSeries) {
+function countNewHighsIn3Months(highSeries) {
   const n = highSeries.length
   if (n < SERIAL_HIGH_LOOKBACK_DAYS + 2) return null
+  let count = 0
   for (let i = n - 1 - SERIAL_HIGH_LOOKBACK_DAYS; i < n - 1; i++) {
     if (i <= 0) continue
     const priorHigh = Math.max(...highSeries.slice(Math.max(0, i - HIGH_LOOKBACK), i))
-    if (highSeries[i] >= priorHigh) return false // a prior day in the window already made a new high
+    if (highSeries[i] >= priorHigh) count++ // a prior day in the window already made a new high
   }
-  return true
+  return count
 }
 
 // Numeric approximation of "base quality" over the ~6-8 week window
@@ -202,7 +204,7 @@ export function evaluateWeekHigh(company, closes, volumes, highs, lows, opens) {
   // Entry-filter-specific metrics (see entryFilter.js) — not used by the
   // existing grade/signalType pipeline above, which predates and doesn't
   // depend on any of these.
-  const firstNewHighIn3Months = isFirstNewHighIn3Months(highSeries)
+  const newHighCountIn3Months = countNewHighsIn3Months(highSeries)
   const baseQuality = estimateBaseQuality(highSeries, lowSeries, peakAge)
   const { gapPct: breakoutGapPct, volRatio50AtBreakout } = computeBreakoutDayMetrics(closes, opens, volumes, peakAge)
   const extensionFrom50EmaPct = ema50 != null ? ((price - ema50) / ema50) * 100 : null
@@ -251,7 +253,7 @@ export function evaluateWeekHigh(company, closes, volumes, highs, lows, opens) {
     todayUp,
     pullbackVolRatio,
     strength, // legacy STRONG/WATCH tag, kept for back-compat with old filters
-    firstNewHighIn3Months,
+    newHighCountIn3Months,
     baseQuality,
     breakoutGapPct,
     volRatio50AtBreakout,
