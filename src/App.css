@@ -1811,11 +1811,12 @@
 .sector-status-warm { color: var(--amber); background: rgba(245, 158, 11, 0.1); }
 .sector-status-cold { color: var(--text-muted); background: rgba(100, 116, 139, 0.1); }
 
-/* ── Entry filter status tags (PASS / CAUTION / FAIL — entryFilter.js) ───── */
+/* ── Entry score tags (A/B/C/D — entryFilter.js's 0-20 scoring model) ────── */
 
-.entry-filter-pass    { color: var(--green); background: rgba(0, 200, 150, 0.1); }
-.entry-filter-caution { color: var(--amber); background: rgba(245, 158, 11, 0.1); }
-.entry-filter-fail    { color: var(--red);   background: rgba(255, 76, 76, 0.1); }
+.entry-score-a { color: var(--green); background: rgba(0, 200, 150, 0.1); }
+.entry-score-b { color: var(--blue);  background: rgba(59, 130, 246, 0.1); }
+.entry-score-c { color: var(--amber); background: rgba(245, 158, 11, 0.1); }
+.entry-score-d { color: var(--red);   background: rgba(255, 76, 76, 0.1); }
 
 .entry-filter-rules {
   display: flex;
