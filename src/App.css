@@ -1811,6 +1811,28 @@
 .sector-status-warm { color: var(--amber); background: rgba(245, 158, 11, 0.1); }
 .sector-status-cold { color: var(--text-muted); background: rgba(100, 116, 139, 0.1); }
 
+/* ── Entry filter status tags (PASS / CAUTION / FAIL — entryFilter.js) ───── */
+
+.entry-filter-pass    { color: var(--green); background: rgba(0, 200, 150, 0.1); }
+.entry-filter-caution { color: var(--amber); background: rgba(245, 158, 11, 0.1); }
+.entry-filter-fail    { color: var(--red);   background: rgba(255, 76, 76, 0.1); }
+
+.entry-filter-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.5rem 0;
+  font-size: 0.8rem;
+}
+
+.entry-filter-rule {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.entry-filter-rule-label { flex: 1; }
+
 /* ── Verdict panel (verdict.js's getVerdict() — the ONE consolidated call) ── */
 
 .verdict-panel {

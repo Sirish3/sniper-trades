@@ -17,6 +17,78 @@ import { THRESHOLDS } from './screenerThresholds'
 const HIGH_LOOKBACK = 252 // ~52 weeks of trading days
 const RET_1M_LOOKBACK = 21
 const RET_3M_LOOKBACK = 63
+const SERIAL_HIGH_LOOKBACK_DAYS = RET_3M_LOOKBACK // "last 3 months" per the entry-filter spec
+const BASE_LOOKBACK_MIN_DAYS = 30 // ~6 weeks
+const BASE_LOOKBACK_MAX_DAYS = 40 // ~8 weeks
+const DOLLAR_VOLUME_WINDOW = 20
+
+// True if no OTHER day in the trailing `SERIAL_HIGH_LOOKBACK_DAYS` window
+// (excluding today) was ALSO a new 52-week high — i.e. today's high isn't a
+// repeated/serial new-high maker. Returns null if there's not enough history
+// to check the full window. Each candidate day's "prior high" uses whatever
+// trailing history is actually available up to HIGH_LOOKBACK bars (same
+// graceful-degradation approach as isNewHigh/daysSincePeakHigh above) rather
+// than hard-requiring a full 252+63 bars, which this app's ~370-calendar-day
+// Alpaca fetch (screener.js) never has — this trades a small amount of edge
+// accuracy on the earliest days of the window for actually being computable
+// at all, rather than being permanently null for every single stock.
+function isFirstNewHighIn3Months(highSeries) {
+  const n = highSeries.length
+  if (n < SERIAL_HIGH_LOOKBACK_DAYS + 2) return null
+  for (let i = n - 1 - SERIAL_HIGH_LOOKBACK_DAYS; i < n - 1; i++) {
+    if (i <= 0) continue
+    const priorHigh = Math.max(...highSeries.slice(Math.max(0, i - HIGH_LOOKBACK), i))
+    if (highSeries[i] >= priorHigh) return false // a prior day in the window already made a new high
+  }
+  return true
+}
+
+// Numeric approximation of "base quality" over the ~6-8 week window
+// immediately before the breakout day: how wide was the high-low range, and
+// how many days does that span. This is NOT a substitute for actually
+// looking at the chart — a tight numeric range can still hide a base that a
+// discretionary trader would reject (broken prior trend, no higher lows,
+// etc.) — so callers should always treat this as an estimate requiring
+// visual verification, never a hard pass on its own. Returns null if there
+// isn't enough pre-breakout history to measure.
+function estimateBaseQuality(highSeries, lowSeries, peakAge) {
+  const breakoutIdx = highSeries.length - 1 - peakAge
+  const windowEnd = breakoutIdx
+  const windowStart = Math.max(0, windowEnd - BASE_LOOKBACK_MAX_DAYS)
+  const durationDays = windowEnd - windowStart
+  if (durationDays < BASE_LOOKBACK_MIN_DAYS) return null
+  const windowHighs = highSeries.slice(windowStart, windowEnd)
+  const windowLows = lowSeries.slice(windowStart, windowEnd)
+  const baseHigh = Math.max(...windowHighs)
+  const baseLow = Math.min(...windowLows)
+  if (baseLow <= 0) return null
+  const rangePct = ((baseHigh - baseLow) / baseLow) * 100
+  return { durationDays, rangePct, tight: rangePct <= 20 }
+}
+
+// Gap % and volume-vs-50-day-average SPECIFICALLY on the day price crossed
+// the 52-week high (not today's bar, unless today IS that day — peakAge=0)
+// — distinct from volRatioMaxN/volRatio50, which read the best/current day
+// in a trailing window rather than anchoring to the actual breakout day.
+function computeBreakoutDayMetrics(closes, opens, volumes, peakAge) {
+  const idx = closes.length - 1 - peakAge
+  if (idx <= 0) return { gapPct: null, volRatio50AtBreakout: null }
+  const prevClose = closes[idx - 1]
+  const gapPct = opens && opens[idx] != null && prevClose > 0
+    ? ((opens[idx] - prevClose) / prevClose) * 100
+    : null
+  const volRatio50AtBreakout = idx + 1 >= 50 ? volumeRatio(volumes.slice(0, idx + 1), 50) : null
+  return { gapPct, volRatio50AtBreakout }
+}
+
+function avgDollarVolume(closes, volumes, period = DOLLAR_VOLUME_WINDOW) {
+  if (closes.length < period || volumes.length < period) return null
+  const c = closes.slice(-period)
+  const v = volumes.slice(-period)
+  let sum = 0
+  for (let i = 0; i < period; i++) sum += c[i] * v[i]
+  return sum / period
+}
 
 // True if today's high reaches/exceeds the highest high of the prior year
 // (i.e. excluding today) — the standard "new 52-week high" definition,
@@ -127,6 +199,21 @@ export function evaluateWeekHigh(company, closes, volumes, highs, lows, opens) {
       ? 'WATCH'
       : null
 
+  // Entry-filter-specific metrics (see entryFilter.js) — not used by the
+  // existing grade/signalType pipeline above, which predates and doesn't
+  // depend on any of these.
+  const firstNewHighIn3Months = isFirstNewHighIn3Months(highSeries)
+  const baseQuality = estimateBaseQuality(highSeries, lowSeries, peakAge)
+  const { gapPct: breakoutGapPct, volRatio50AtBreakout } = computeBreakoutDayMetrics(closes, opens, volumes, peakAge)
+  const extensionFrom50EmaPct = ema50 != null ? ((price - ema50) / ema50) * 100 : null
+  const avgDollarVolume20 = avgDollarVolume(closes, volumes)
+  // Confirmed unavailable from this app's data: Alpaca's free-tier fetch
+  // (screener.js) only pulls ~370 calendar days of history, nowhere near
+  // enough to know whether a 52-week high is also an ALL-TIME high — always
+  // UNKNOWN, never guessed. See entryFilter.js's own note on how this is
+  // handled (never a hard fail, always surfaced for manual verification).
+  const isAllTimeHigh = null
+
   return {
     symbol: company.symbol,
     name: company.name,
@@ -164,6 +251,13 @@ export function evaluateWeekHigh(company, closes, volumes, highs, lows, opens) {
     todayUp,
     pullbackVolRatio,
     strength, // legacy STRONG/WATCH tag, kept for back-compat with old filters
+    firstNewHighIn3Months,
+    baseQuality,
+    breakoutGapPct,
+    volRatio50AtBreakout,
+    extensionFrom50EmaPct,
+    avgDollarVolume20,
+    isAllTimeHigh,
     // Populated by classifyWeekHighResults / buildWeekHighTradePlans:
     rsRank: null,
     sectorStatus: null,
@@ -175,6 +269,8 @@ export function evaluateWeekHigh(company, closes, volumes, highs, lows, opens) {
     earningsSource: null,
     tradePlan: null,
     thesis: null,
+    // Populated by attachEntryFilters (entryFilter.js):
+    entryFilter: null,
   }
 }
 

@@ -4,6 +4,7 @@ import { getTotalStockMarketUniverse } from '../utils/assetUniverse'
 import {
   scanWeekHighs, classifyWeekHighResults, checkEarningsForResults, buildWeekHighTradePlans, MAX_TRADE_PLAN_CANDIDATES,
 } from '../utils/weekHighScreener'
+import { fetchEntryFilterRegime, attachEntryFilters, computeSimpleTradePlan } from '../utils/entryFilter'
 import { getMarketCondition, DEFAULT_PORTFOLIO_SIZE } from '../utils/swingPlan'
 import { loadPositions } from '../utils/positions'
 import { fetchSp500FromWikipedia, fetchNasdaq100FromWikipedia, diffConstituents } from '../utils/indexConstituents'
@@ -439,6 +440,94 @@ function computeBuyAlerts(results, portfolioOptions) {
 }
 
 const SECTOR_STATUS_CLS = { HOT: 'sector-status-hot', WARM: 'sector-status-warm', COLD: 'sector-status-cold' }
+const ENTRY_FILTER_CLS = { PASS: 'entry-filter-pass', CAUTION: 'entry-filter-caution', FAIL: 'entry-filter-fail' }
+const RULE_STATUS_CLS = { PASS: 'text-green', CAUTION: 'text-muted', UNKNOWN: 'text-muted', FAIL: 'text-danger' }
+const RULE_STATUS_ICON = { PASS: '✓', CAUTION: '⚠', UNKNOWN: '?', FAIL: '✗' }
+
+function RegimeStrip({ regime }) {
+  if (!regime) return null
+  const marketOk = regime.marketAbove50
+  return (
+    <div className="sector-heat">
+      <div className="sector-heat-header">
+        <span className="market-banner-title">Entry Filter Regime Check</span>
+        <span className="sector-heat-summary text-muted">
+          Position-size dampener, not a hard veto — see each card&apos;s Entry Filter for the per-stock sector check.
+        </span>
+      </div>
+      <span className={`sector-status-tag ${marketOk === false ? 'sector-status-cold' : marketOk === true ? 'sector-status-hot' : 'sector-status-warm'}`}>
+        S&amp;P 500 {marketOk === false ? 'below' : marketOk === true ? 'above' : 'unknown vs.'} 50-day MA
+      </span>
+      {regime.warnings?.length > 0 && <p className="section-empty">{regime.warnings.join(' · ')}</p>}
+    </div>
+  )
+}
+
+function EntryFilterRuleList({ entryFilter }) {
+  if (!entryFilter) return null
+  return (
+    <div className="entry-filter-rules">
+      {entryFilter.rules.map((rule) => (
+        <div key={rule.n} className="entry-filter-rule">
+          <span className={RULE_STATUS_CLS[rule.status]}>{RULE_STATUS_ICON[rule.status]}</span>
+          <span className="entry-filter-rule-label">{rule.n}. {rule.label}</span>
+          <span className={`mono ${RULE_STATUS_CLS[rule.status]}`}>{rule.detail}</span>
+        </div>
+      ))}
+      {entryFilter.regime.caution && (
+        <div className="entry-filter-rule">
+          <span className="text-muted">⚠</span>
+          <span className="entry-filter-rule-label">Regime dampener</span>
+          <span className="mono text-muted">{entryFilter.regime.reasons.join('; ')}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Ranked summary per the entry-filter spec's final ask: PASS names by RS
+// Rank descending, then CAUTION names as a secondary watch list. A separate
+// view from BuyListSummary/verdict.js — this is specifically the literal
+// 14-rule entry filter's own ranking, not the grade-based verdict.
+function EntryFilterSummary({ results, onSelect }) {
+  const withFilter = results.filter((r) => r.entryFilter != null)
+  if (withFilter.length === 0) return null
+
+  const passes = withFilter.filter((r) => r.entryFilter.status === 'PASS').sort((a, b) => (b.rsRank ?? -1) - (a.rsRank ?? -1))
+  const cautions = withFilter.filter((r) => r.entryFilter.status === 'CAUTION').sort((a, b) => (b.rsRank ?? -1) - (a.rsRank ?? -1))
+
+  if (passes.length === 0 && cautions.length === 0) return null
+
+  return (
+    <div className="result-card buy-list-summary">
+      <h3 className="result-card-title">Entry Filter Summary</h3>
+      {passes.length > 0 && (
+        <div className="summary-row">
+          <span className="summary-row-label">🟢 PASS <span className="text-muted">({passes.length})</span></span>
+          <div className="summary-chip-list">
+            {passes.map((r) => (
+              <button type="button" key={r.symbol} className="summary-chip summary-chip-buy" onClick={() => onSelect(r.symbol)}>
+                {r.symbol} <span className="text-muted">RS {r.rsRank ?? '?'}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {cautions.length > 0 && (
+        <div className="summary-row">
+          <span className="summary-row-label">🟡 CAUTION (secondary watch) <span className="text-muted">({cautions.length})</span></span>
+          <div className="summary-chip-list">
+            {cautions.map((r) => (
+              <button type="button" key={r.symbol} className="summary-chip summary-chip-watch" onClick={() => onSelect(r.symbol)}>
+                {r.symbol} <span className="text-muted">RS {r.rsRank ?? '?'}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const SIGNAL_OPTIONS = [
   { value: 'actionable', label: 'All Signals' },
@@ -527,7 +616,7 @@ function BuyListSummary({ buckets, onSelect }) {
   )
 }
 
-function ResultCard({ result, expanded, onToggle, analysisOpen, onToggleAnalysis, portfolioSize }) {
+function ResultCard({ result, expanded, onToggle, analysisOpen, onToggleAnalysis, entryFilterOpen, onToggleEntryFilter, portfolioSize }) {
   const r = result
   // Computed unconditionally (not gated on analysisOpen) since getVerdict()
   // needs it for every visible card, not just the expanded "Show Analysis"
@@ -570,6 +659,11 @@ function ResultCard({ result, expanded, onToggle, analysisOpen, onToggleAnalysis
         <span className="result-sector-tag">{r.sector}</span>
         {r.sectorStatus && (
           <span className={`sector-status-tag ${SECTOR_STATUS_CLS[r.sectorStatus] ?? ''}`}>{r.sectorStatus}</span>
+        )}
+        {r.entryFilter && (
+          <span className={`sector-status-tag ${ENTRY_FILTER_CLS[r.entryFilter.status] ?? ''}`}>
+            Entry Filter: {r.entryFilter.status}
+          </span>
         )}
       </div>
 
@@ -666,6 +760,11 @@ function ResultCard({ result, expanded, onToggle, analysisOpen, onToggleAnalysis
         <button type="button" className="btn" onClick={() => onToggleAnalysis(r.symbol)}>
           {analysisOpen ? 'Hide Analysis ▴' : 'Show Analysis ▾'}
         </button>
+        {r.entryFilter && (
+          <button type="button" className="btn" onClick={() => onToggleEntryFilter(r.symbol)}>
+            {entryFilterOpen ? 'Hide Entry Filter ▴' : 'Show Entry Filter ▾'}
+          </button>
+        )}
       </div>
 
       {analysisOpen && (
@@ -673,6 +772,56 @@ function ResultCard({ result, expanded, onToggle, analysisOpen, onToggleAnalysis
           <AnalysisPanel data={analysis} onClose={() => onToggleAnalysis(r.symbol)} verdict={verdict} />
           <AvwapPanel symbol={r.symbol} />
         </>
+      )}
+
+      {entryFilterOpen && r.entryFilter && (
+        <div className="trade-plan-panel">
+          <EntryFilterRuleList entryFilter={r.entryFilter} />
+          {(() => {
+            const simple = computeSimpleTradePlan(r, portfolioSize, r.entryFilter.regime.caution)
+            return (
+              <>
+                <p className="section-empty" style={{ marginTop: '0.5rem' }}>
+                  Quick-reference sizing (wider of 1.5x ATR / 5% fixed stop, 1% account risk
+                  {r.entryFilter.regime.caution ? ', halved for regime caution' : ''}) — separate from the fuller
+                  stop/size/trim plan above.
+                </p>
+                {simple.viable ? (
+                  <div className="result-stats">
+                    <div className="result-stat">
+                      <span className="result-stat-label">Entry</span>
+                      <span className="result-stat-value mono">${simple.entryPrice.toFixed(2)}</span>
+                    </div>
+                    <div className="result-stat">
+                      <span className="result-stat-label">Stop ({simple.stopMethod}, wider)</span>
+                      <span className="result-stat-value mono text-danger">
+                        ${simple.stopPrice.toFixed(2)} <span className="text-muted">(-{simple.riskPct.toFixed(1)}%)</span>
+                      </span>
+                    </div>
+                    <div className="result-stat">
+                      <span className="result-stat-label">1.5x ATR stop</span>
+                      <span className="result-stat-value mono">${simple.atrStopPrice.toFixed(2)}</span>
+                    </div>
+                    <div className="result-stat">
+                      <span className="result-stat-label">5% stop</span>
+                      <span className="result-stat-value mono">${simple.fixedStopPrice.toFixed(2)}</span>
+                    </div>
+                    <div className="result-stat">
+                      <span className="result-stat-label">Shares (1% risk{simple.regimeHalved ? ', halved' : ''})</span>
+                      <span className="result-stat-value mono">{simple.shares}</span>
+                    </div>
+                    <div className="result-stat">
+                      <span className="result-stat-label">Dollar risk</span>
+                      <span className="result-stat-value mono">${simple.dollarRisk.toLocaleString()} ({simple.dollarRiskPct.toFixed(2)}%)</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="analysis-error">Not viable: {simple.reason}</p>
+                )}
+              </>
+            )
+          })()}
+        </div>
       )}
 
       {expanded && r.tradePlan && (
@@ -809,6 +958,7 @@ function WeekHighScreener() {
   const [progress, setProgress] = useState({ done: 0, total: 0 })
   const [results, setResults] = useState(null)
   const [sectorHeat, setSectorHeat] = useState(null)
+  const [regime, setRegime] = useState(null)
   const [earningsFetchFailedCount, setEarningsFetchFailedCount] = useState(0)
   const [error, setError] = useState(null)
 
@@ -817,6 +967,7 @@ function WeekHighScreener() {
   const [tradePlanError, setTradePlanError] = useState(null)
   const [expandedSymbol, setExpandedSymbol] = useState(null)
   const [analysisSymbol, setAnalysisSymbol] = useState(null)
+  const [entryFilterSymbol, setEntryFilterSymbol] = useState(null)
 
   const [earningsChecking, setEarningsChecking] = useState(false)
   const [earningsCheckError, setEarningsCheckError] = useState(null)
@@ -839,6 +990,7 @@ function WeekHighScreener() {
     setError(null)
     setResults(null)
     setSectorHeat(null)
+    setRegime(null)
     setEarningsFetchFailedCount(0)
     setEarningsCheckedCount(null)
     setEarningsCheckError(null)
@@ -857,6 +1009,14 @@ function WeekHighScreener() {
 
       const { results: scanResults } = await scanWeekHighs((done, total) => setProgress({ done, total }), union)
       const { results: classified, sectorHeat: heat } = await classifyWeekHighResults(scanResults)
+      // Market/sector regime is fetched once per scan (not per stock) and
+      // applied as a dampener, not a veto — see entryFilter.js. Earnings is
+      // still UNKNOWN for every result at this point (rule 14 downgrades to
+      // CAUTION accordingly until Check Earnings runs, same deferred-cost
+      // pattern classifyWeekHighResults already uses).
+      const regimeResult = await fetchEntryFilterRegime()
+      attachEntryFilters(classified, regimeResult)
+      setRegime(regimeResult)
       setResults(classified)
       setSectorHeat(heat)
       // Buy alerts deliberately wait for Check Earnings now (see
@@ -929,6 +1089,10 @@ function WeekHighScreener() {
     setEarningsCheckError(null)
     try {
       const { fetchFailedCount } = await checkEarningsForResults(filteredResults)
+      // Rule 14 (no earnings within 5 trading days) depends on the earnings
+      // data checkEarningsForResults just populated — re-attach so the entry
+      // filter isn't still showing its pre-earnings-check UNKNOWN/CAUTION.
+      if (regime) attachEntryFilters(filteredResults, regime)
       setEarningsFetchFailedCount(fetchFailedCount)
       setEarningsCheckedCount(filteredResults.length)
       setResults((prev) => [...prev]) // checkEarningsForResults mutates in place — force a re-render
@@ -981,7 +1145,10 @@ function WeekHighScreener() {
           Classifies every scanned stock into a breakout/retest/watch/approaching signal, grades the
           setup A+ through C (volume, RS rank, RSI, EMA stack, ADX, Alligator phase, sector heat,
           earnings distance), and — on request — builds a full stop/size/trim trade plan with a
-          deterministic thesis. All computed locally from Alpaca/Finnhub data; no AI calls.
+          deterministic thesis. Each card also gets a literal 14-rule Entry Filter (PASS/CAUTION/FAIL,
+          with a market/sector-regime dampener and a simple quick-reference stop/size number) as a second,
+          separate lens — see &quot;Show Entry Filter&quot; on any card. All computed locally from
+          Alpaca/Finnhub data; no AI calls.
         </p>
 
         <h3 className="result-card-title">Universe</h3>
@@ -1122,6 +1289,7 @@ function WeekHighScreener() {
       {error && <div className="analysis-error">{error}</div>}
 
       <SectorHeatStrip sectorHeat={sectorHeat} />
+      <RegimeStrip regime={regime} />
 
       {results && (
         <div className="filter-panel filter-panel-active">
@@ -1237,6 +1405,7 @@ function WeekHighScreener() {
       {earningsCheckError && <div className="analysis-error">{earningsCheckError}</div>}
 
       {results && <BuyListSummary buckets={buyListBuckets} onSelect={handleSelectFromSummary} />}
+      {results && <EntryFilterSummary results={filteredResults} onSelect={handleSelectFromSummary} />}
 
       {results && filteredResults.length > 0 && (
         <div className="result-card scan-summary">
@@ -1293,6 +1462,8 @@ function WeekHighScreener() {
                   onToggle={(symbol) => setExpandedSymbol((prev) => (prev === symbol ? null : symbol))}
                   analysisOpen={analysisSymbol === r.symbol}
                   onToggleAnalysis={(symbol) => setAnalysisSymbol((prev) => (prev === symbol ? null : symbol))}
+                  entryFilterOpen={entryFilterSymbol === r.symbol}
+                  onToggleEntryFilter={(symbol) => setEntryFilterSymbol((prev) => (prev === symbol ? null : symbol))}
                   portfolioSize={portfolioSize}
                 />
               ))}
