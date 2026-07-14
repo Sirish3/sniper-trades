@@ -4,12 +4,11 @@ import { getTotalStockMarketUniverse } from '../utils/assetUniverse'
 import {
   scanWeekHighs, classifyWeekHighResults, checkEarningsForResults, buildWeekHighTradePlans, MAX_TRADE_PLAN_CANDIDATES,
 } from '../utils/weekHighScreener'
-import { fetchEntryFilterRegime, attachEntryFilters, computeSimpleTradePlan } from '../utils/entryFilter'
+import { fetchMarketRegime, summarizeVerdict } from '../utils/evaluateStock'
 import { getMarketCondition, DEFAULT_PORTFOLIO_SIZE } from '../utils/swingPlan'
 import { loadPositions } from '../utils/positions'
 import { fetchSp500FromWikipedia, fetchNasdaq100FromWikipedia, diffConstituents } from '../utils/indexConstituents'
 import { validateEtfTickers } from '../utils/etfValidation'
-import { analyzeStock } from '../utils/stockAnalysis'
 import { logBuyAlerts } from '../utils/alerts'
 import { fetchAlpacaCloses, returnOverLookback } from '../utils/marketRegime'
 import { fetchEarningsCalendar } from '../utils/marketData'
@@ -21,7 +20,6 @@ import { ema, sma } from '../utils/indicators'
 import { SP500 } from '../data/sp500'
 import { NASDAQ100 } from '../data/nasdaq100'
 import { ETFS_AND_METALS } from '../data/etfsAndMetals'
-import { getVerdict, bucketResultsByVerdict } from '../utils/verdict'
 import { LoaderIcon, TrendingUpIcon } from './Icons'
 import AnalysisPanel from './AnalysisPanel'
 import AvwapPanel from './AvwapPanel'
@@ -424,23 +422,15 @@ function matchesSearch(result, query) {
   return result.symbol.toLowerCase().includes(q) || result.name.toLowerCase().includes(q)
 }
 
-const GRADE_CLS = { 'A+': 'aplus', A: 'a', B: 'b', C: 'c' }
-const GRADE_RANK = { 'A+': 0, A: 1, B: 2, C: 3 }
+const GRADE_CLS = { A: 'entry-score-a', B: 'entry-score-b', C: 'entry-score-c', D: 'entry-score-d' }
+const GRADE_RANK = { A: 0, B: 1, C: 2, D: 3 }
 
-// Runs analyzeStock() over signal-bearing results and returns the ones whose
-// decision resolves to BUY, as [{ r, a }] pairs ready for logBuyAlerts().
-function computeBuyAlerts(results, portfolioOptions) {
-  const buys = []
-  for (const r of results) {
-    if (!r.signalType) continue
-    const a = analyzeStock(r, portfolioOptions)
-    if (a.decision.action === 'BUY') buys.push({ r, a })
-  }
-  return buys
+// Reads the already-computed r.evaluation (evaluateStock.js) rather than
+// recomputing anything — every result gets its evaluation attached once,
+// during the scan/earnings-check step, not per-render here.
+function computeBuyAlerts(results) {
+  return results.filter((r) => r.evaluation?.verdict === 'BUY_NOW')
 }
-
-const SECTOR_STATUS_CLS = { HOT: 'sector-status-hot', WARM: 'sector-status-warm', COLD: 'sector-status-cold' }
-const ENTRY_SCORE_CLS = { A: 'entry-score-a', B: 'entry-score-b', C: 'entry-score-c', D: 'entry-score-d' }
 
 function RegimeStrip({ regime }) {
   if (!regime) return null
@@ -448,10 +438,10 @@ function RegimeStrip({ regime }) {
   return (
     <div className="sector-heat">
       <div className="sector-heat-header">
-        <span className="market-banner-title">Entry Filter Regime Check</span>
+        <span className="market-banner-title">Regime Check</span>
         <span className="sector-heat-summary text-muted">
-          Feeds the Entry Score (factor 11) and, through it, position sizing — see each card&apos;s Entry Filter for
-          the per-stock sector fit.
+          Feeds the Entry Score (factor 11) and, through it, the verdict — see each card&apos;s Show Details for the
+          per-stock sector fit.
         </span>
       </div>
       <span className={`sector-status-tag ${marketOk === false ? 'sector-status-cold' : marketOk === true ? 'sector-status-hot' : 'sector-status-warm'}`}>
@@ -462,73 +452,25 @@ function RegimeStrip({ regime }) {
   )
 }
 
-// One consolidated block per stock, per the output-format spec — nothing
-// repeated that's already visible in the card's main result-stats grid
-// above (raw RSI/ADX/volume/etc. values live there; this shows only
-// conclusions: grade, stage, strongest/weakest factor LABELS, one
-// deterministic risk sentence, and unresolved watch-outs).
-function EntryFilterBlock({ r, portfolioSize }) {
-  const entryFilter = r.entryFilter
-  if (!entryFilter) return null
+// Ranked table + dropped list: every scored (Stage-0-eligible) stock ranked
+// by score descending, then every disqualified stock with which hard
+// filter failed. A different VIEW of the same evaluation objects
+// BuyListSummary buckets by verdict — this ranks the same underlying
+// scores/sizing (evaluation.entry/stop/riskDollars), it doesn't recompute
+// them a second time.
+function ScoreRanking({ results, onSelect }) {
+  const withEval = results.filter((r) => r.evaluation != null)
+  const scored = withEval
+    .filter((r) => r.evaluation.grade != null)
+    .sort((a, b) => b.evaluation.score - a.evaluation.score)
+  const disqualified = withEval.filter((r) => r.evaluation.grade == null)
 
-  if (!entryFilter.eligible) {
-    return (
-      <div className="entry-filter-rules">
-        <p className="section-empty">Dropped — failed a hard filter (Step 2), not scored or staged:</p>
-        {entryFilter.failures.map((f) => (
-          <div key={f} className="entry-filter-rule">
-            <span className="text-danger">✗</span>
-            <span className="entry-filter-rule-label">{f}</span>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  const simple = computeSimpleTradePlan(r, portfolioSize)
-
-  return (
-    <div className="entry-filter-rules">
-      <p>
-        <span className={`sector-status-tag ${ENTRY_SCORE_CLS[entryFilter.grade]}`}>
-          Grade {entryFilter.grade} ({entryFilter.score}/24)
-        </span>{' '}
-        <span className="sector-status-tag sector-status-warm">Stage: {entryFilter.stage}</span>
-      </p>
-      {simple.viable ? (
-        <p className="mono">
-          Entry ${simple.entryPrice.toFixed(2)} | Stop ${simple.stopPrice.toFixed(2)} ({simple.stopMethod}, -{simple.riskPct.toFixed(1)}%) |
-          Size {simple.shares} sh / ${(simple.shares * simple.entryPrice).toLocaleString()} (risking {simple.accountRiskPct}% = ${simple.dollarRisk.toLocaleString()})
-        </p>
-      ) : (
-        <p className="analysis-error">Not sized: {simple.reason}</p>
-      )}
-      {entryFilter.strengths.length > 0 && <p>Strongest factors: {entryFilter.strengths.join(', ')}</p>}
-      {entryFilter.weaknesses.length > 0 && <p>Weakest factors: {entryFilter.weaknesses.join(', ')}</p>}
-      <p>Key risk: {entryFilter.keyRisk}</p>
-      {entryFilter.watchOuts.length > 0 && <p className="text-muted">Watch-outs: {entryFilter.watchOuts.join('; ')}</p>}
-    </div>
-  )
-}
-
-// Ranked table + dropped list per the scoring model's final ask: every
-// qualifying (hard-filter-eligible) stock ranked by score descending, then
-// every dropped stock with which hard filter failed. A separate view from
-// BuyListSummary/verdict.js — this is specifically the scoring model's own
-// ranking, not the grade-based verdict.
-function EntryFilterSummary({ results, onSelect, portfolioSize }) {
-  const withFilter = results.filter((r) => r.entryFilter != null)
-  const qualifying = withFilter
-    .filter((r) => r.entryFilter.eligible)
-    .sort((a, b) => b.entryFilter.score - a.entryFilter.score)
-  const dropped = withFilter.filter((r) => !r.entryFilter.eligible)
-
-  if (qualifying.length === 0 && dropped.length === 0) return null
+  if (scored.length === 0 && disqualified.length === 0) return null
 
   return (
     <div className="result-card buy-list-summary">
-      <h3 className="result-card-title">Entry Score Ranking <span className="text-muted">({qualifying.length} qualifying)</span></h3>
-      {qualifying.length > 0 && (
+      <h3 className="result-card-title">Score Ranking <span className="text-muted">({scored.length} scored)</span></h3>
+      {scored.length > 0 && (
         <div className="scanner-table-wrap">
           <table className="scanner-table">
             <thead>
@@ -537,17 +479,17 @@ function EntryFilterSummary({ results, onSelect, portfolioSize }) {
               </tr>
             </thead>
             <tbody>
-              {qualifying.map((r) => {
-                const simple = computeSimpleTradePlan(r, portfolioSize)
+              {scored.map((r) => {
+                const e = r.evaluation
                 return (
                   <tr key={r.symbol} onClick={() => onSelect(r.symbol)} style={{ cursor: 'pointer' }}>
                     <td className="mono">{r.symbol}</td>
-                    <td><span className={`sector-status-tag ${ENTRY_SCORE_CLS[r.entryFilter.grade]}`}>{r.entryFilter.grade}</span></td>
-                    <td className="mono">{r.entryFilter.score}/24</td>
-                    <td>{r.entryFilter.stage}</td>
-                    <td className="mono">{simple.viable ? `$${simple.entryPrice.toFixed(2)}` : '—'}</td>
-                    <td className="mono">{simple.viable ? `$${simple.stopPrice.toFixed(2)}` : '—'}</td>
-                    <td className="mono">{simple.viable ? `$${simple.dollarRisk.toLocaleString()}` : '—'}</td>
+                    <td><span className={`sector-status-tag ${GRADE_CLS[e.grade]}`}>{e.grade}</span></td>
+                    <td className="mono">{e.score}/24</td>
+                    <td>{e.stage}</td>
+                    <td className="mono">{e.entry != null ? `$${e.entry.toFixed(2)}` : '—'}</td>
+                    <td className="mono">{e.stop != null ? `$${e.stop.toFixed(2)}` : '—'}</td>
+                    <td className="mono">{e.riskDollars != null ? `$${e.riskDollars.toLocaleString()}` : '—'}</td>
                   </tr>
                 )
               })}
@@ -555,9 +497,9 @@ function EntryFilterSummary({ results, onSelect, portfolioSize }) {
           </table>
         </div>
       )}
-      {dropped.length > 0 && (
+      {disqualified.length > 0 && (
         <p className="section-empty" style={{ marginTop: '0.75rem' }}>
-          {dropped.map((r) => `${r.symbol} — dropped: ${r.entryFilter.failures[0]}`).join('. ')}
+          {disqualified.map((r) => `${r.symbol} — dropped: ${r.evaluation.reasons.find((x) => x.status === 'FAIL')?.label ?? 'hard filter'}`).join('. ')}
         </p>
       )}
     </div>
@@ -573,49 +515,35 @@ const SIGNAL_OPTIONS = [
   { value: 'any', label: 'Any (incl. no signal)' },
 ]
 
-function SectorHeatStrip({ sectorHeat }) {
-  if (!sectorHeat) return null
-  if (!sectorHeat.list || sectorHeat.list.length === 0) return null
-
-  return (
-    <div className="sector-heat">
-      <div className="sector-heat-header">
-        <span className="market-banner-title">Sector Heat (52W high gate)</span>
-        <span className="sector-heat-summary text-muted">HOT = within 3% of own 52w high · WARM = within 8% · COLD = further out</span>
-      </div>
-      <div className="sector-chip-row">
-        {sectorHeat.list.map((s) => (
-          <div
-            key={s.etf}
-            className={`sector-chip ${SECTOR_STATUS_CLS[s.status] ?? 'sector-chip-neutral'}`}
-            title={`${s.sector} (${s.etf}) — ${formatPct(s.pctFromHigh)} from 52w high`}
-          >
-            <span className="sector-chip-name">{s.etf}</span>
-            <span className="sector-chip-ret">{s.status}</span>
-          </div>
-        ))}
-      </div>
-      {sectorHeat.warnings?.length > 0 && (
-        <p className="section-empty">{sectorHeat.warnings.join(' · ')}</p>
-      )}
-    </div>
-  )
-}
-
-// One section per verdict.js bucket — every visible result lands in exactly
-// one of these three, no silent drops (see verdict.test.js's bucketing
+// One section per verdict bucket — every visible result lands in exactly
+// one of these four, no silent drops (see evaluateStock.test.js's bucketing
 // regression guard).
 const SUMMARY_SECTIONS = [
-  ['buyNow', '🟢 Buy Now', 'summary-chip-buy'],
-  ['watch', '🟡 Watch', 'summary-chip-watch'],
-  ['avoidSell', '🔴 Avoid / Sell', 'summary-chip-avoid'],
+  ['BUY_NOW', '🟢 Buy Now', 'summary-chip-buy'],
+  ['WATCH_RETEST', '🔵 Watch — Retest', 'summary-chip-watch'],
+  ['WATCH', '🟡 Watch', 'summary-chip-watch'],
+  ['AVOID', '🔴 Avoid', 'summary-chip-avoid'],
 ]
 
+// Buckets every result by evaluation.verdict — the ONE place this happens,
+// same object every card's badge and details panel already reads. No
+// separate getVerdict()/analyzeStock() recomputation; every result lands in
+// exactly one of the four buckets, no silent drops.
+function bucketResultsByVerdict(results) {
+  const buckets = { BUY_NOW: [], WATCH_RETEST: [], WATCH: [], AVOID: [] }
+  for (const r of results) {
+    if (!r.evaluation) continue
+    const key = buckets[r.evaluation.verdict] ? r.evaluation.verdict : 'WATCH'
+    buckets[key].push(r)
+  }
+  return buckets
+}
+
 // Quick-glance dashboard above the full result list — buckets every
-// currently-filtered result by its getVerdict() call so "which ones can I
-// buy right now" doesn't require opening each card's Show Analysis panel
-// one at a time. Purely a different view of the same data; clicking a chip
-// jumps to and opens that stock's full analysis.
+// currently-filtered result by its evaluation.verdict so "which ones can I
+// buy right now" doesn't require opening each card's Show Details panel one
+// at a time. Purely a different view of the same data; clicking a chip
+// jumps to and opens that stock's full evaluation.
 function BuyListSummary({ buckets, onSelect }) {
   const anyResults = SUMMARY_SECTIONS.some(([key]) => buckets[key].length > 0)
   if (!anyResults) return null
@@ -632,15 +560,15 @@ function BuyListSummary({ buckets, onSelect }) {
               {label} <span className="text-muted">({items.length})</span>
             </span>
             <div className="summary-chip-list">
-              {items.map(({ r, verdict }) => (
+              {items.map((r) => (
                 <button
                   type="button"
                   key={r.symbol}
                   className={`summary-chip ${cls}`}
                   onClick={() => onSelect(r.symbol)}
-                  title={verdict.reason}
+                  title={summarizeVerdict(r.evaluation).reason}
                 >
-                  {r.symbol} <span className="text-muted">{r.grade ?? '?'}</span>
+                  {r.symbol} <span className="text-muted">{r.evaluation.grade ?? '?'}</span>
                 </button>
               ))}
             </div>
@@ -651,32 +579,8 @@ function BuyListSummary({ buckets, onSelect }) {
   )
 }
 
-function ResultCard({ result, expanded, onToggle, analysisOpen, onToggleAnalysis, entryFilterOpen, onToggleEntryFilter, portfolioSize }) {
+function ResultCard({ result, expanded, onToggle, detailsOpen, onToggleDetails }) {
   const r = result
-  // Computed unconditionally (not gated on analysisOpen) since getVerdict()
-  // needs it for every visible card, not just the expanded "Show Analysis"
-  // panel — bucketResultsByVerdict() already pays this same cost for every
-  // filtered result for the Quick Lists dashboard, so this isn't a new
-  // performance class.
-  // attachTradePlan() (weekHighScreener.js, run by "Build Trade Plans")
-  // mutates r.grade/r.tradePlan/r.earningsDaysAway IN PLACE rather than
-  // replacing `r` — so `r` itself is the same object reference before and
-  // after. useMemo compares deps by reference, so without listing the
-  // specific mutable fields below, this card would keep showing its stale
-  // pre-trade-plan verdict even though the Quick Lists dashboard (which
-  // re-reads `r` fresh, not through a per-card memo) already updated —
-  // exactly the kind of disagreeing-verdicts bug this component exists to
-  // prevent.
-  // The lint rule below assumes `r`'s reference alone captures its field
-  // changes; it doesn't, since attachTradePlan() mutates these fields in
-  // place (see comment above) — the explicit deps are required, not
-  // redundant.
-  const analysis = useMemo(
-    () => analyzeStock(r, { portfolioSize, riskEnvironment: 'neutral', openPositions: loadPositions() }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [r, r.grade, r.tradePlan, r.earningsDaysAway, portfolioSize]
-  )
-  const verdict = useMemo(() => getVerdict(r, analysis), [r, analysis])
   const canExpand = r.signalType === 'BUY_BREAKOUT' || r.signalType === 'BUY_RETEST'
 
   return (
@@ -688,18 +592,10 @@ function ResultCard({ result, expanded, onToggle, analysisOpen, onToggleAnalysis
         </div>
       </div>
 
-      <VerdictPanel verdict={verdict} newHigh={r.newHigh} />
+      <VerdictPanel evaluation={r.evaluation} newHigh={r.newHigh} />
 
       <div className="card-meta-row">
         <span className="result-sector-tag">{r.sector}</span>
-        {r.sectorStatus && (
-          <span className={`sector-status-tag ${SECTOR_STATUS_CLS[r.sectorStatus] ?? ''}`}>{r.sectorStatus}</span>
-        )}
-        {r.entryFilter && (
-          <span className={`sector-status-tag ${r.entryFilter.eligible ? ENTRY_SCORE_CLS[r.entryFilter.grade] ?? '' : 'sector-status-cold'}`}>
-            {r.entryFilter.eligible ? `Entry Score: ${r.entryFilter.grade} (${r.entryFilter.score}/24)` : 'Entry Filter: dropped'}
-          </span>
-        )}
       </div>
 
       <div className="result-stats">
@@ -792,27 +688,16 @@ function ResultCard({ result, expanded, onToggle, analysisOpen, onToggleAnalysis
             {r.tradePlan ? (expanded ? 'Hide Trade Plan ▴' : 'Show Trade Plan ▾') : 'Build a trade plan to see details ▾'}
           </button>
         )}
-        <button type="button" className="btn" onClick={() => onToggleAnalysis(r.symbol)}>
-          {analysisOpen ? 'Hide Analysis ▴' : 'Show Analysis ▾'}
+        <button type="button" className="btn" onClick={() => onToggleDetails(r.symbol)}>
+          {detailsOpen ? 'Hide Details ▴' : 'Show Details ▾'}
         </button>
-        {r.entryFilter && (
-          <button type="button" className="btn" onClick={() => onToggleEntryFilter(r.symbol)}>
-            {entryFilterOpen ? 'Hide Entry Filter ▴' : 'Show Entry Filter ▾'}
-          </button>
-        )}
       </div>
 
-      {analysisOpen && (
+      {detailsOpen && (
         <>
-          <AnalysisPanel data={analysis} onClose={() => onToggleAnalysis(r.symbol)} verdict={verdict} />
+          <AnalysisPanel evaluation={r.evaluation} ticker={r.symbol} company={r.name} onClose={() => onToggleDetails(r.symbol)} />
           <AvwapPanel symbol={r.symbol} />
         </>
-      )}
-
-      {entryFilterOpen && r.entryFilter && (
-        <div className="trade-plan-panel">
-          <EntryFilterBlock r={r} portfolioSize={portfolioSize} />
-        </div>
       )}
 
       {expanded && r.tradePlan && (
@@ -948,7 +833,6 @@ function WeekHighScreener() {
   const [scanning, setScanning] = useState(false)
   const [progress, setProgress] = useState({ done: 0, total: 0 })
   const [results, setResults] = useState(null)
-  const [sectorHeat, setSectorHeat] = useState(null)
   const [regime, setRegime] = useState(null)
   const [earningsFetchFailedCount, setEarningsFetchFailedCount] = useState(0)
   const [error, setError] = useState(null)
@@ -957,8 +841,7 @@ function WeekHighScreener() {
   const [tradePlanProgress, setTradePlanProgress] = useState(null)
   const [tradePlanError, setTradePlanError] = useState(null)
   const [expandedSymbol, setExpandedSymbol] = useState(null)
-  const [analysisSymbol, setAnalysisSymbol] = useState(null)
-  const [entryFilterSymbol, setEntryFilterSymbol] = useState(null)
+  const [detailsSymbol, setDetailsSymbol] = useState(null)
 
   const [earningsChecking, setEarningsChecking] = useState(false)
   const [earningsCheckError, setEarningsCheckError] = useState(null)
@@ -980,7 +863,6 @@ function WeekHighScreener() {
     setScanning(true)
     setError(null)
     setResults(null)
-    setSectorHeat(null)
     setRegime(null)
     setEarningsFetchFailedCount(0)
     setEarningsCheckedCount(null)
@@ -999,17 +881,16 @@ function WeekHighScreener() {
       const union = [...unionMap.values()]
 
       const { results: scanResults } = await scanWeekHighs((done, total) => setProgress({ done, total }), union)
-      const { results: classified, sectorHeat: heat } = await classifyWeekHighResults(scanResults)
       // Market/sector regime is fetched once per scan (not per stock) and
-      // applied as a dampener, not a veto — see entryFilter.js. Earnings is
-      // still UNKNOWN for every result at this point (rule 14 downgrades to
-      // CAUTION accordingly until Check Earnings runs, same deferred-cost
-      // pattern classifyWeekHighResults already uses).
-      const regimeResult = await fetchEntryFilterRegime()
-      attachEntryFilters(classified, regimeResult)
+      // feeds evaluateStock()'s Stage 2 factor 11 — see evaluateStock.js.
+      // Earnings is still UNKNOWN for every result at this point (Stage 0's
+      // earnings check and factor 10 both treat that as neutral until Check
+      // Earnings runs).
+      const regimeResult = await fetchMarketRegime()
+      const marketContext = { ...regimeResult, portfolioSize }
+      const { results: classified } = await classifyWeekHighResults(scanResults, marketContext)
       setRegime(regimeResult)
       setResults(classified)
-      setSectorHeat(heat)
       // Buy alerts deliberately wait for Check Earnings now (see
       // handleCheckEarnings) — every result's earnings is UNKNOWN at this
       // point (see classifyWeekHighResults), so alerting here would fire
@@ -1038,29 +919,24 @@ function WeekHighScreener() {
     })
   }, [results, signalFilter, gradeFilter, emaFilter, resultSearch])
 
-  // Buckets every currently-filtered result by getVerdict() for the Quick
-  // Lists dashboard, via verdict.js's bucketResultsByVerdict() — every result
-  // lands in exactly one of buyNow/watch/avoidSell, no dropped WAIT reasons
-  // (see verdict.test.js's regression guard). analyzeStock is a pure,
-  // synchronous function (no fetch), so running it over a few hundred
-  // filtered results is still sub-second — this is just a different view of
-  // data already on screen, not a new scan.
+  // Buckets every currently-filtered result by evaluation.verdict for the
+  // Quick Lists dashboard — every result lands in exactly one of BUY_NOW/
+  // WATCH_RETEST/WATCH/AVOID, no dropped reasons. Reads the already-computed
+  // r.evaluation (evaluateStock.js), no recomputation.
   const buyListBuckets = useMemo(() => {
-    const portfolioOptions = { portfolioSize, riskEnvironment: 'neutral', openPositions: loadPositions() }
-    const buckets = bucketResultsByVerdict(filteredResults, portfolioOptions)
-
+    const buckets = bucketResultsByVerdict(filteredResults)
     for (const items of Object.values(buckets)) {
       items.sort((x, y) => {
-        const gx = GRADE_RANK[x.r.grade] ?? 4
-        const gy = GRADE_RANK[y.r.grade] ?? 4
-        return gx !== gy ? gx - gy : (y.r.rsRank ?? -1) - (x.r.rsRank ?? -1)
+        const gx = GRADE_RANK[x.evaluation.grade] ?? 4
+        const gy = GRADE_RANK[y.evaluation.grade] ?? 4
+        return gx !== gy ? gx - gy : (y.rsRank ?? -1) - (x.rsRank ?? -1)
       })
     }
     return buckets
-  }, [filteredResults, portfolioSize])
+  }, [filteredResults])
 
   const handleSelectFromSummary = (symbol) => {
-    setAnalysisSymbol(symbol)
+    setDetailsSymbol(symbol)
     requestAnimationFrame(() => {
       document.getElementById(`stock-${symbol}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     })
@@ -1069,25 +945,22 @@ function WeekHighScreener() {
   // User-triggered, deliberately separate from the scan itself (see
   // classifyWeekHighResults) — runs Finnhub lookups only against whatever's
   // currently filtered/visible, not the whole scanned universe, so cost
-  // scales with "stocks I'm actually considering." Re-grades/re-classifies
-  // each result afterward since both can change once earnings is known,
-  // then re-fires buy alerts against this now-earnings-aware subset (moved
-  // here from handleScan for exactly that reason).
+  // scales with "stocks I'm actually considering." Re-runs evaluateStock()
+  // afterward since Stage 0's earnings check and factor 10 both depend on
+  // it, then re-fires buy alerts against this now-earnings-aware subset
+  // (moved here from handleScan for exactly that reason).
   const handleCheckEarnings = async () => {
     if (filteredResults.length === 0) return
 
     setEarningsChecking(true)
     setEarningsCheckError(null)
     try {
-      const { fetchFailedCount } = await checkEarningsForResults(filteredResults)
-      // Rule 14 (no earnings within 5 trading days) depends on the earnings
-      // data checkEarningsForResults just populated — re-attach so the entry
-      // filter isn't still showing its pre-earnings-check UNKNOWN/CAUTION.
-      if (regime) attachEntryFilters(filteredResults, regime)
+      const marketContext = { ...regime, portfolioSize }
+      const { fetchFailedCount } = await checkEarningsForResults(filteredResults, marketContext)
       setEarningsFetchFailedCount(fetchFailedCount)
       setEarningsCheckedCount(filteredResults.length)
       setResults((prev) => [...prev]) // checkEarningsForResults mutates in place — force a re-render
-      logBuyAlerts(computeBuyAlerts(filteredResults, { portfolioSize, riskEnvironment: 'neutral', openPositions: loadPositions() }))
+      logBuyAlerts(computeBuyAlerts(filteredResults))
     } catch (err) {
       setEarningsCheckError(err.message)
     } finally {
@@ -1133,15 +1006,15 @@ function WeekHighScreener() {
       <div className="screener-intro">
         <h2 className="result-card-title">52-Week High Screener</h2>
         <p className="section-summary">
-          Classifies every scanned stock into a breakout/retest/watch/approaching signal, grades the
-          setup A+ through C (volume, RS rank, RSI, EMA stack, ADX, Alligator phase, sector heat,
-          earnings distance), and — on request — builds a full stop/size/trim trade plan with a
-          deterministic thesis. Each card also gets a separate Entry Score (0-24, graded A-D): 3 hard
-          filters gate eligibility (52W-high proximity, MACD/EMA trend, $15M+/day liquidity), a
-          best-effort Wyckoff/Weinstein market stage is classified (accumulation/markup/distribution/
-          decline), then 11 factors — including serial-breakout history and market/sector regime fit —
-          are scored 0-2 each, plus a simple quick-reference stop/size number — see &quot;Show Entry
-          Filter&quot; on any card. All computed locally from Alpaca/Finnhub data; no AI calls.
+          Every scanned stock runs through ONE evaluation (evaluateStock.js): 6 hard filters gate
+          eligibility (52W-high/retest proximity, MACD/EMA trend, $15M+/day liquidity, AVWAP support,
+          no imminent confirmed earnings, not parabolic), a best-effort Wyckoff/Weinstein market stage
+          is classified, then 12 factors are scored 0-2 each for a 0-24 total graded A-D — which,
+          together with breakout/retest timing, produces the single verdict badge on every card
+          (Buy Now / Watch — Retest / Watch / Avoid). &quot;Show Details&quot; opens the full
+          breakdown; &quot;Build Trade Plans&quot; is a separate, more detailed stop/size/trim engine
+          for managing a position once you&apos;ve decided to take it. All computed locally from
+          Alpaca/Finnhub data; no AI calls.
         </p>
 
         <h3 className="result-card-title">Universe</h3>
@@ -1281,7 +1154,6 @@ function WeekHighScreener() {
 
       {error && <div className="analysis-error">{error}</div>}
 
-      <SectorHeatStrip sectorHeat={sectorHeat} />
       <RegimeStrip regime={regime} />
 
       {results && (
@@ -1310,8 +1182,8 @@ function WeekHighScreener() {
           <div className="filter-row">
             <span className="filter-row-label">Grade</span>
             <div className="filter-chips">
-              {['A+', 'A', 'B', 'C'].map((g) => {
-                const cls = GRADE_CLS[g]
+              {['A', 'B', 'C', 'D'].map((g) => {
+                const cls = g.toLowerCase()
                 const active = gradeFilter.has(g)
                 return (
                   <button
@@ -1398,7 +1270,7 @@ function WeekHighScreener() {
       {earningsCheckError && <div className="analysis-error">{earningsCheckError}</div>}
 
       {results && <BuyListSummary buckets={buyListBuckets} onSelect={handleSelectFromSummary} />}
-      {results && <EntryFilterSummary results={filteredResults} onSelect={handleSelectFromSummary} portfolioSize={portfolioSize} />}
+      {results && <ScoreRanking results={filteredResults} onSelect={handleSelectFromSummary} />}
 
       {results && filteredResults.length > 0 && (
         <div className="result-card scan-summary">
@@ -1453,11 +1325,8 @@ function WeekHighScreener() {
                   result={r}
                   expanded={expandedSymbol === r.symbol}
                   onToggle={(symbol) => setExpandedSymbol((prev) => (prev === symbol ? null : symbol))}
-                  analysisOpen={analysisSymbol === r.symbol}
-                  onToggleAnalysis={(symbol) => setAnalysisSymbol((prev) => (prev === symbol ? null : symbol))}
-                  entryFilterOpen={entryFilterSymbol === r.symbol}
-                  onToggleEntryFilter={(symbol) => setEntryFilterSymbol((prev) => (prev === symbol ? null : symbol))}
-                  portfolioSize={portfolioSize}
+                  detailsOpen={detailsSymbol === r.symbol}
+                  onToggleDetails={(symbol) => setDetailsSymbol((prev) => (prev === symbol ? null : symbol))}
                 />
               ))}
             </div>

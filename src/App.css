@@ -1776,10 +1776,10 @@
   cursor: pointer;
 }
 
-.grade-chip-aplus.active { color: var(--purple); background: rgba(139, 92, 246, 0.12); border-color: var(--purple); }
-.grade-chip-a.active     { color: var(--green);  background: rgba(0, 200, 150, 0.12); border-color: var(--green); }
-.grade-chip-b.active     { color: var(--amber);  background: rgba(245, 158, 11, 0.12); border-color: var(--amber); }
-.grade-chip-c.active     { color: var(--text-muted); background: rgba(100, 116, 139, 0.12); border-color: var(--text-muted); }
+.grade-chip-a.active { color: var(--green); background: rgba(0, 200, 150, 0.12); border-color: var(--green); }
+.grade-chip-b.active { color: var(--blue);  background: rgba(59, 130, 246, 0.12); border-color: var(--blue); }
+.grade-chip-c.active { color: var(--amber); background: rgba(245, 158, 11, 0.12); border-color: var(--amber); }
+.grade-chip-d.active { color: var(--red);   background: rgba(255, 76, 76, 0.12); border-color: var(--red); }
 
 /* ── Signal type badges (BUY_BREAKOUT / BUY_RETEST / WATCH / APPROACHING) ── */
 

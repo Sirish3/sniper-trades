@@ -14,30 +14,33 @@ function saveAlerts(alerts) {
   localStorage.setItem(ALERTS_STORAGE_KEY, JSON.stringify(alerts))
 }
 
+const CONFIDENCE_BY_GRADE = { A: 'HIGH', B: 'MEDIUM', C: 'LOW', D: 'LOW' }
+
 // Appends one alert per symbol per calendar day, so re-scanning later the
 // same day doesn't spam duplicate entries for a ticker that's still a BUY.
-// `buys` is the [{ r, a }] pairs produced by analyzeStock() — the full `r`
-// snapshot is kept so "Show Analysis" can rebuild the exact panel later via
-// analyzeStock(snapshot, ...), frozen at the moment the alert fired.
-export function logBuyAlerts(buys) {
+// `results` is a flat array of scan results whose r.evaluation.verdict is
+// 'BUY_NOW' (see WeekHighScreener.jsx's computeBuyAlerts) — the full `r`
+// snapshot (including r.evaluation) is kept so "Show Details" can be
+// rebuilt later exactly as it looked when the alert fired.
+export function logBuyAlerts(results) {
   const existing = loadAlerts()
   const today = new Date().toISOString().slice(0, 10)
   const seenToday = new Set(existing.filter((a) => a.loggedAt.slice(0, 10) === today).map((a) => a.symbol))
 
-  const fresh = buys
-    .filter(({ r }) => !seenToday.has(r.symbol))
-    .map(({ r, a }) => ({
+  const fresh = results
+    .filter((r) => !seenToday.has(r.symbol))
+    .map((r) => ({
       id: `${r.symbol}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       kind: 'buy',
       symbol: r.symbol,
       name: r.name,
       sector: r.sector,
-      signalType: r.signalType,
-      grade: r.grade,
+      signalType: r.evaluation.signalType,
+      grade: r.evaluation.grade,
       price: r.price,
-      summary: a.decision.summary,
-      confidence: a.decision.confidence,
-      urgency: a.decision.urgency,
+      summary: `Grade ${r.evaluation.grade} (${r.evaluation.score}/24) confirmed breakout`,
+      confidence: CONFIDENCE_BY_GRADE[r.evaluation.grade] ?? 'MEDIUM',
+      urgency: 'NOW',
       loggedAt: new Date().toISOString(),
       snapshot: r,
     }))

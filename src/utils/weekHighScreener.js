@@ -1,18 +1,23 @@
 // 52-week-high screener — finds stocks breaking out to (or setting up near)
-// a new 52-week high, classifies the setup into the same signal taxonomy as
-// a discretionary swing trader would (breakout / retest / watch /
-// approaching), grades it A+ through C, and — for actionable signals — builds
-// a full stop/size/trim trade plan and a deterministic thesis. Everything is
-// computed from real Alpaca/Finnhub data already flowing through this app
-// (indicators.js, positionPlan.js, sectorRegime.js); no LLM involved.
+// a new 52-week high and computes their raw technical metrics. Grading,
+// signal timing, and the buy/watch/avoid verdict are NOT computed here —
+// see evaluateStock.js, the single pipeline everything downstream reads
+// (classifyWeekHighResults/checkEarningsForResults just run it and mirror
+// grade/signalType onto flat r fields for back-compat). This file also
+// keeps the separate, more detailed "Build Trade Plans" stop/size/trim
+// engine (positionPlan.js) and its own deterministic thesis text — a
+// distinct feature for managing a position once you've decided to take it,
+// not a second opinion on whether to take it. Everything is computed from
+// real Alpaca/Finnhub data already flowing through this app; no LLM
+// involved.
 
 import { ema, rsi, adx, volumeRatio, maxVolumeRatioOverWindow, pctChange, macd, atr, williamsAlligator, alligatorPhase } from './indicators'
 import { scanUniverse } from './screener'
-import { classifySectorHeat } from './sectorRegime'
 import { getEarningsMap } from './earningsProvider'
 import { selectStop, sizePosition, buildTrimPlan, TIME_STOP_DAYS } from './positionPlan'
 import { avwapFromAnchorIndex } from './avwap'
 import { THRESHOLDS } from './screenerThresholds'
+import { evaluateStock } from './evaluateStock'
 
 const HIGH_LOOKBACK = 252 // ~52 weeks of trading days
 const RET_1M_LOOKBACK = 21
@@ -201,9 +206,8 @@ export function evaluateWeekHigh(company, closes, volumes, highs, lows, opens) {
       ? 'WATCH'
       : null
 
-  // Entry-filter-specific metrics (see entryFilter.js) — not used by the
-  // existing grade/signalType pipeline above, which predates and doesn't
-  // depend on any of these.
+  // evaluateStock()-specific metrics — not used by the legacy `strength`
+  // tag above, kept only for back-compat with old filters.
   const newHighCountIn3Months = countNewHighsIn3Months(highSeries)
   const baseQuality = estimateBaseQuality(highSeries, lowSeries, peakAge)
   const { gapPct: breakoutGapPct, volRatio50AtBreakout } = computeBreakoutDayMetrics(closes, opens, volumes, peakAge)
@@ -212,7 +216,7 @@ export function evaluateWeekHigh(company, closes, volumes, highs, lows, opens) {
   // Confirmed unavailable from this app's data: Alpaca's free-tier fetch
   // (screener.js) only pulls ~370 calendar days of history, nowhere near
   // enough to know whether a 52-week high is also an ALL-TIME high — always
-  // UNKNOWN, never guessed. See entryFilter.js's own note on how this is
+  // UNKNOWN, never guessed. See evaluateStock.js's own note on how this is
   // handled (never a hard fail, always surfaced for manual verification).
   const isAllTimeHigh = null
 
@@ -262,17 +266,21 @@ export function evaluateWeekHigh(company, closes, volumes, highs, lows, opens) {
     isAllTimeHigh,
     // Populated by classifyWeekHighResults / buildWeekHighTradePlans:
     rsRank: null,
-    sectorStatus: null,
     signalType: null,
     grade: null,
-    gradeReasons: null,
     earningsDaysAway: null,
     earningsDate: null,
     earningsSource: null,
     tradePlan: null,
     thesis: null,
-    // Populated by attachEntryFilters (entryFilter.js):
-    entryFilter: null,
+    // Populated by classifyWeekHighResults / checkEarningsForResults — the
+    // ONE evaluation object (see evaluateStock.js). grade/signalType above
+    // are kept as flat fields too (mirrored from evaluation.grade/
+    // .signalType) purely for back-compat with existing sort/filter code
+    // and positionPlan.js's B-grade size scale on the separate "Build Trade
+    // Plans" path — evaluation is the single source of truth they're copied
+    // from, never computed independently.
+    evaluation: null,
   }
 }
 
@@ -293,211 +301,54 @@ export function computeWeekHighRsRanks(results) {
   sorted.forEach((r, i) => { r.rsRank = Math.round(((n - 1 - i) / (n - 1)) * 100) })
 }
 
-const BREAKOUT_PCT_FROM_HIGH_MIN = -1 // "at or within 1% above" the 52w high
-const RETEST_PCT_FROM_HIGH_MIN = -10
-const RETEST_PCT_FROM_HIGH_MAX = -1
-const RETEST_MIN_DAYS = 3
-const RETEST_MAX_DAYS = 7
-const RETEST_VOLUME_MAX_RATIO = 0.85
-const WATCH_PCT_FROM_HIGH_MIN = -5
-const WATCH_RS_RANK_MIN = 70
-const APPROACHING_PCT_FROM_HIGH_MIN = -8
-const APPROACHING_RS_RANK_MIN = 65
-const RS_RANK_VOLUME_BOOST_MIN = 85
-const BOOSTED_VOLUME_RATIO_MIN = 1.3
-
-// RULE CHANGE (THRESHOLDS.adxConfirmsTrend, default OFF — see
-// screenerThresholds.js): ADX and the Williams Alligator are both
-// trend-confirmation tools. Normally the retest branch below requires
-// EATING_UP outright. When the flag is on, an exceptionally strong ADX
-// reading is treated as an equally valid trend confirmation even while the
-// Alligator is still only WAKING/SLEEPING — but two guards keep this from
-// over-reaching: GUARD 1, EATING_DOWN is a real, confirmed downtrend and is
-// never overridden regardless of ADX or the flag; GUARD 2, the override
-// only ever PROMOTES an already-excellent (grade A/A+) setup — it must
-// never rescue a B/C card that just happens to have a freak-high ADX.
-// Returns which path (if either) confirmed the trend, so callers can tag
-// the result for visibility into how often the override actually fires.
-function evaluateTrendConfirmation(phase, adxValue, grade) {
-  if (phase === 'EATING_UP') return { confirmed: true, by: 'ALLIGATOR' }
-  if (
-    THRESHOLDS.adxConfirmsTrend &&
-    phase !== 'EATING_DOWN' && // GUARD 1 — never override a confirmed downtrend
-    (grade === 'A' || grade === 'A+') && // GUARD 2 — only promote, never rescue
-    adxValue != null && adxValue > THRESHOLDS.adxStrongTrendConfirm
-  ) {
-    return { confirmed: true, by: 'ADX_OVERRIDE' }
-  }
-  return { confirmed: false, by: null }
+// Runs evaluateStock() for one result and mirrors grade/signalType onto flat
+// r.grade/r.signalType fields — kept for back-compat with existing sort/
+// filter code and positionPlan.js's B-grade size scale on the separate
+// "Build Trade Plans" path. r.evaluation is the single source of truth
+// they're copied from, never computed independently of it.
+function applyEvaluation(r, marketContext) {
+  const evaluation = evaluateStock(r, marketContext)
+  r.evaluation = evaluation
+  r.grade = evaluation.grade
+  r.signalType = evaluation.signalType
 }
 
-// Classifies a setup into the signal taxonomy: BUY_BREAKOUT (at/near a new
-// high on strong volume), BUY_RETEST (pulled back 1-10% on light volume,
-// today reversing up, trend confirmed — see evaluateTrendConfirmation
-// above), WATCH (close to the high, strong RS, not yet breaking out),
-// APPROACHING (further out but still worth monitoring), or null (no
-// actionable signal). Checked in priority order — a stock meeting
-// BUY_BREAKOUT's bar is reported as that even if it would also technically
-// satisfy WATCH. Reads r.grade (must already be set — classifyWeekHighResults
-// computes grade before signal type for exactly this reason) for GUARD 2
-// above, and mutates r.trendConfirmedBy ('ALLIGATOR' | 'ADX_OVERRIDE' | null)
-// as a side effect, same "attach extra computed context to r" pattern this
-// file already uses for earnings — see classifyWeekHighResults.
-export function classifySignalType(r) {
-  const { pctFromHigh, volRatio20, volRatioMaxN, rsRank, peakAge, pullbackVolRatio, todayUp, volRising, alligatorPhase: phase, adxValue, grade, newHigh } = r
-  r.trendConfirmedBy = null
-
-  // FIX 1: the breakout volume gate reads the best day in the recent
-  // window, not just today's bar — see maxVolumeRatioOverWindow.
-  const volForBreakout = volRatioMaxN ?? volRatio20
-  const volumeOk = volForBreakout != null && (
-    volForBreakout >= THRESHOLDS.volumeStrongFloor ||
-    (rsRank != null && rsRank > RS_RANK_VOLUME_BOOST_MIN && volForBreakout >= BOOSTED_VOLUME_RATIO_MIN)
-  )
-  if ((newHigh || pctFromHigh >= BREAKOUT_PCT_FROM_HIGH_MIN) && volumeOk) {
-    return 'BUY_BREAKOUT'
-  }
-
-  const isRetestPullback = peakAge >= RETEST_MIN_DAYS && peakAge <= RETEST_MAX_DAYS
-  const trend = evaluateTrendConfirmation(phase, adxValue, grade)
-  if (
-    pctFromHigh >= RETEST_PCT_FROM_HIGH_MIN && pctFromHigh <= RETEST_PCT_FROM_HIGH_MAX &&
-    isRetestPullback &&
-    pullbackVolRatio != null && pullbackVolRatio < RETEST_VOLUME_MAX_RATIO &&
-    todayUp && volRising &&
-    trend.confirmed
-  ) {
-    r.trendConfirmedBy = trend.by
-    return 'BUY_RETEST'
-  }
-
-  if (pctFromHigh >= WATCH_PCT_FROM_HIGH_MIN && rsRank != null && rsRank > WATCH_RS_RANK_MIN) {
-    return 'WATCH'
-  }
-
-  if (pctFromHigh >= APPROACHING_PCT_FROM_HIGH_MIN && rsRank != null && rsRank > APPROACHING_RS_RANK_MIN) {
-    return 'APPROACHING'
-  }
-
-  return null
-}
-
-const GRADE_C_RSI_MIN = 45
-const GRADE_C_RSI_MAX = 78
-const GRADE_C_MAX_PCT_FROM_HIGH = -10
-const EARNINGS_AVOID_DAYS = 10
-
-// Grades a 52-week-high setup A+, A, B, or C.
-// C disqualifiers are checked first (any one -> C regardless of other criteria).
-// A+ requires all 9 criteria (volume, RS rank, RSI, EMA stack, ADX, Alligator,
-// sector heat, earnings distance, proximity to pivot). A allows a few misses
-// if the core trend/volume/RSI criteria still hold. Everything else is B
-// (tradeable at the 50% size positionPlan.js's B_GRADE_SCALE already applies).
-export function gradeWeekHighSetup(r) {
-  const { volRatio20, volRatioMaxN, rsiValue, adxValue, rsRank, emaFullStack, pctFromHigh, alligatorPhase: phase, sectorStatus, earningsDaysAway, earningsSource, avwapFromHigh } = r
-  const avwapBullish = avwapFromHigh == null || avwapFromHigh.signal === 'BULLISH'
-  // FIX 1: the MUST volume floor reads the best day in the recent window
-  // (volRatioMaxN), not just today's single bar — see maxVolumeRatioOverWindow.
-  const volForMust = volRatioMaxN ?? volRatio20
-  // An ESTIMATED earnings date carries ~±2-week real error, so it can never
-  // produce a confident pass this close to the avoid window — widen the bar
-  // it has to clear. A CONFIRMED date (or no date at all, i.e. UNKNOWN) uses
-  // the real threshold unchanged.
-  const earningsAvoidDays = EARNINGS_AVOID_DAYS + (earningsSource === 'ESTIMATED' ? THRESHOLDS.earningsEstimatedPadDays : 0)
-
-  const cReasons = []
-  if (volForMust != null && volForMust < THRESHOLDS.volumeMustFloor) {
-    cReasons.push(`Vol ${volForMust.toFixed(2)}x < ${THRESHOLDS.volumeMustFloor}x (best of last ${THRESHOLDS.volumeBreakoutWindowDays}d)`)
-  }
-  if (rsiValue != null && (rsiValue < GRADE_C_RSI_MIN || rsiValue > GRADE_C_RSI_MAX)) {
-    cReasons.push(`RSI ${rsiValue.toFixed(0)} out of 45-78 range`)
-  }
-  if (pctFromHigh != null && pctFromHigh < GRADE_C_MAX_PCT_FROM_HIGH) {
-    cReasons.push(`${pctFromHigh.toFixed(1)}% from high — too extended from pivot`)
-  }
-  if (cReasons.length > 0) return { grade: 'C', reasons: cReasons }
-
-  const checks = [
-    { ok: pctFromHigh != null && pctFromHigh >= -5, miss: `${pctFromHigh?.toFixed(1) ?? '?'}% from pivot (need >= -5%)` },
-    // FIX 1 (applied here too — was still reading today's single-day
-    // volRatio20 while every other gate in this file already used
-    // volForMust): a stock that broke out yesterday on 3x volume and is
-    // quietly digesting today at 1.1x was incorrectly losing this A+
-    // criterion even though the breakout volume already confirmed.
-    { ok: volForMust != null && volForMust >= 2.5, miss: `Vol ${volForMust?.toFixed(2) ?? '?'}x (need >= 2.5x, best of last ${THRESHOLDS.volumeBreakoutWindowDays}d)` },
-    { ok: rsRank != null && rsRank > 85, miss: `RS rank ${rsRank ?? '?'} (need > 85)` },
-    { ok: rsiValue != null && rsiValue >= 55 && rsiValue <= 72, miss: `RSI ${rsiValue?.toFixed(0) ?? '?'} (need 55-72)` },
-    { ok: !!emaFullStack, miss: 'EMA stack not bullish (need 10>20>50)' },
-    { ok: adxValue != null && adxValue > 28, miss: `ADX ${adxValue?.toFixed(0) ?? '?'} (need > 28)` },
-    { ok: phase === 'EATING_UP', miss: `Alligator ${phase} (need EATING_UP)` },
-    { ok: sectorStatus === 'HOT', miss: `Sector ${sectorStatus ?? 'unknown'} (need HOT)` },
-    { ok: earningsDaysAway == null || earningsDaysAway > earningsAvoidDays, miss: `Earnings in ${earningsDaysAway} days${earningsSource === 'ESTIMATED' ? ' (estimated)' : ''} (need > ${earningsAvoidDays})` },
-    { ok: avwapBullish, miss: `AVWAP from 52W high bearish (${avwapFromHigh?.vsPricePct.toFixed(1)}%) — buyers since the high are underwater` },
-  ]
-  const misses = checks.filter((c) => !c.ok).map((c) => c.miss)
-  if (misses.length === 0) return { grade: 'A+', reasons: [] }
-
-  const coreOk = !!emaFullStack
-    && (volForMust == null || volForMust >= THRESHOLDS.volumeStrongFloor)
-    && (rsiValue == null || (rsiValue >= 50 && rsiValue <= 75))
-    && (pctFromHigh == null || pctFromHigh >= -7)
-    && (adxValue == null || adxValue > 20)
-    && sectorStatus !== 'COLD'
-    && avwapBullish
-  if (misses.length <= 3 && coreOk) return { grade: 'A', reasons: misses }
-
-  return { grade: 'B', reasons: misses.slice(0, 4) }
-}
-
-// Attaches RS rank, sector-ETF heat (HOT/WARM/COLD), signal classification,
-// and grade to every scanned result. Deliberately does NOT fetch earnings
-// here — that used to run against the entire scanned universe on every
-// scan (thousands of Finnhub calls for a Total Market scan, well past the
-// free tier's budget — see the earningsProvider fetch-failure tracking).
-// Earnings is now a separate, explicit step (see checkEarningsForResults)
-// the user triggers after filtering down to the list they actually care
-// about, so the Finnhub cost scales with "stocks I'm considering," not
-// "stocks that happened to be in the scanned universe." Every result gets
-// earningsSource: 'UNKNOWN' until that step runs — same value grading/
-// verdict logic already treats as "don't know, don't hard-block, tell the
-// user to verify," so nothing downstream needed to change to support this.
-export async function classifyWeekHighResults(results) {
+// Attaches RS rank and runs evaluateStock() (grade/stage/verdict/sizing) for
+// every scanned result. Deliberately does NOT fetch earnings here — that
+// used to run against the entire scanned universe on every scan (thousands
+// of Finnhub calls for a Total Market scan, well past the free tier's
+// budget — see the earningsProvider fetch-failure tracking). Earnings is a
+// separate, explicit step (see checkEarningsForResults) the user triggers
+// after filtering down to the list they actually care about, so the
+// Finnhub cost scales with "stocks I'm considering," not "stocks that
+// happened to be in the scanned universe." Every result gets
+// earningsSource: 'UNKNOWN' until that step runs — evaluateStock()'s Stage 0
+// earnings check and factor 10 both already treat that as "don't know,
+// don't hard-block, tell the user to verify."
+// `marketContext` is `{ marketAbove50, sectorBySector, portfolioSize }` —
+// see evaluateStock.js's fetchMarketRegime() for the first two.
+export async function classifyWeekHighResults(results, marketContext) {
   computeWeekHighRsRanks(results)
-
-  let sectorHeat = null
-  try {
-    sectorHeat = await classifySectorHeat()
-  } catch {
-    sectorHeat = null
-  }
 
   for (const r of results) {
     r.earningsDate = null
     r.earningsDaysAway = null
     r.earningsSource = 'UNKNOWN'
-    r.sectorStatus = sectorHeat?.bySector?.[r.sector]?.status ?? null
-    // Grade must be set before classifySignalType runs — its ADX-override
-    // trend-confirmation path (GUARD 2) reads r.grade to ensure the override
-    // only ever promotes an already-excellent setup. gradeWeekHighSetup has
-    // no dependency on signalType, so this ordering is safe.
-    const { grade, reasons } = gradeWeekHighSetup(r)
-    r.grade = grade
-    r.gradeReasons = reasons
-    r.signalType = classifySignalType(r)
+    applyEvaluation(r, marketContext)
   }
 
-  return { results, sectorHeat }
+  return { results }
 }
 
 // Explicit, user-triggered earnings check — call this with whatever subset
 // of results the user has already filtered down to (not necessarily the
-// whole scan), typically right before deciding what to trade. Re-derives
-// grade and signalType afterward for each result, since both depend on
-// earnings (a newly-discovered CONFIRMED date inside the avoid window can
-// flip a grade or drop a signal that looked fine before earnings was
-// known). Mutates `results` in place; returns { fetchFailedCount } — see
-// earningsProvider.js's getEarningsMap for what that counts.
-export async function checkEarningsForResults(results) {
+// whole scan), typically right before deciding what to trade. Re-runs
+// evaluateStock() afterward for each result, since earnings feeds both
+// Stage 0 (a newly-discovered CONFIRMED date inside 3 trading days now
+// hard-disqualifies) and Stage 2 factor 10. Mutates `results` in place;
+// returns { fetchFailedCount } — see earningsProvider.js's getEarningsMap
+// for what that counts.
+export async function checkEarningsForResults(results, marketContext) {
   if (results.length === 0) return { fetchFailedCount: 0 }
 
   const { map: earningsMap, fetchFailedCount } = await getEarningsMap(results.map((r) => r.symbol))
@@ -507,10 +358,7 @@ export async function checkEarningsForResults(results) {
     r.earningsDate = earnings.date
     r.earningsDaysAway = earnings.daysAway
     r.earningsSource = earnings.source
-    const { grade, reasons } = gradeWeekHighSetup(r)
-    r.grade = grade
-    r.gradeReasons = reasons
-    r.signalType = classifySignalType(r)
+    applyEvaluation(r, marketContext)
   }
 
   return { fetchFailedCount }
@@ -539,20 +387,25 @@ function pctLabel(value) {
   return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`
 }
 
+const THESIS_BREAKOUT_PCT_FROM_HIGH_MIN = -1 // "at or within 1% above" the 52w high
+const THESIS_EARNINGS_AVOID_DAYS = 10
+
 // Deterministic 3-sentence thesis built only from already-computed real
 // numbers (no LLM, no invented figures): what the chart shows, why now, and
-// what could go wrong.
+// what could go wrong. Independent of evaluateStock.js's own Stage 0/2
+// earnings checks (different thresholds, different purpose) — this is
+// display text for the separate "Build Trade Plans" feature, not a second
+// eligibility opinion.
 export function generateThesis(r) {
   const volTxt = r.volRatio20 != null ? `${r.volRatio20.toFixed(1)}x average volume` : 'unconfirmed volume'
-  const sentence1 = r.newHigh || r.pctFromHigh >= BREAKOUT_PCT_FROM_HIGH_MIN
+  const sentence1 = r.newHigh || r.pctFromHigh >= THESIS_BREAKOUT_PCT_FROM_HIGH_MIN
     ? `${r.symbol} is breaking out to a new 52-week high near $${r.price.toFixed(2)} on ${volTxt}, with its EMA stack ${r.emaFullStack ? '10>20>50 aligned' : 'not yet fully aligned'} and the Alligator in its ${r.alligatorPhase} phase.`
     : `${r.symbol} is ${Math.abs(r.pctFromHigh).toFixed(1)}% below its 52-week high of $${r.high52w.toFixed(2)}, with RSI at ${r.rsiValue?.toFixed(0) ?? '?'} and ADX at ${r.adxValue?.toFixed(0) ?? '?'} (${r.adxValue != null && r.adxValue > 25 ? 'trending' : 'still developing'}).`
 
-  const sectorTxt = r.sectorStatus ? `its sector ETF reading ${r.sectorStatus}` : 'sector heat unavailable'
   const earningsTxt = r.earningsDaysAway != null
-    ? `, with earnings ${r.earningsDaysAway} days out${r.earningsSource === 'ESTIMATED' ? ' (estimated)' : ''} — ${r.earningsDaysAway <= EARNINGS_AVOID_DAYS ? 'verify before entry' : 'no near-term gap risk'}`
+    ? `, with earnings ${r.earningsDaysAway} days out${r.earningsSource === 'ESTIMATED' ? ' (estimated)' : ''} — ${r.earningsDaysAway <= THESIS_EARNINGS_AVOID_DAYS ? 'verify before entry' : 'no near-term gap risk'}`
     : r.earningsSource === 'UNKNOWN' ? ', earnings date unavailable — verify before entry' : ''
-  const sentence2 = `It ranks ${r.rsRank ?? '?'} on relative strength versus the scanned universe (${pctLabel(r.ret1m)} over 1 month, ${pctLabel(r.ret3m)} over 3 months), with ${sectorTxt}${earningsTxt}.`
+  const sentence2 = `It ranks ${r.rsRank ?? '?'} on relative strength versus the scanned universe (${pctLabel(r.ret1m)} over 1 month, ${pctLabel(r.ret3m)} over 3 months)${earningsTxt}.`
 
   const sentence3 = r.tradePlan?.viable
     ? `Risk is defined by a ${r.tradePlan.stopMethod} stop at $${r.tradePlan.stopPrice.toFixed(2)} (${r.tradePlan.riskPct.toFixed(1)}% below entry) — a daily close back below that level invalidates the setup, with a time stop by ${r.tradePlan.timeStopDate} if it hasn't progressed.`
@@ -569,13 +422,14 @@ const TRADE_PLAN_BATCH_DELAY_MS = 1500
 
 // Builds the full stop/size/trim plan via positionPlan.js (the same engine
 // the Agentic Screener uses) plus a deterministic thesis — unless the
-// result is grade C or has earnings within the avoid window. Earnings and
+// result is grade C/D or has earnings within the avoid window. Earnings and
 // grade are already known by this point (classifyWeekHighResults populates
 // both, batched, before this ever runs) — no per-ticker fetch or re-grade
-// needed here anymore.
+// needed here anymore. Grade scale is A/B/C/D (evaluateStock.js) — D means
+// "skip despite passing hard filters," refused here same as C.
 async function attachTradePlan(r, portfolioOptions) {
-  if (r.grade === 'C') {
-    r.tradePlan = { viable: false, reason: 'Grade C — do not trade' }
+  if (r.grade === 'C' || r.grade === 'D') {
+    r.tradePlan = { viable: false, reason: `Grade ${r.grade} — do not trade` }
     r.thesis = generateThesis(r)
     return r
   }
