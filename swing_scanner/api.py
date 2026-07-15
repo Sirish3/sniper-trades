@@ -342,7 +342,10 @@ def pattern_scan_run():
     return jsonify(summary)
 
 
-MAX_BACKTEST_TICKERS = 25  # runs synchronously in the request — keep it bounded like /api/pattern-scan/run
+MAX_BACKTEST_TICKERS = 10  # runs synchronously in the request; heavier per-ticker than /api/pattern-scan/run
+# (multi-year history + a full walk per selected strategy, plus one more for
+# the combined run), so capped tighter — a prior, looser cap here combined
+# with redundant per-strategy re-fetching to OOM-kill a Render worker.
 
 
 def _stats_to_json(stats: StrategyStats) -> dict:

@@ -217,12 +217,21 @@ def _close_position(state: _TickerStrategyState, exit_signal, equity: float, por
 
 def _simulate(strategy_ids: list[str], tickers: list[str], start_date: str, end_date: str,
               strategy_params: dict | None = None, portfolio: PortfolioParams | None = None,
-              earnings_calendar: EarningsCalendar | None = None) -> SimResult:
+              earnings_calendar: EarningsCalendar | None = None,
+              bars: dict[str, pd.DataFrame] | None = None) -> SimResult:
+    """`bars`, if given, is used as-is instead of re-fetching — run_comparison
+    loads the universe once and passes the same dict into every isolated
+    per-strategy run plus the combined run, instead of each of those N+1
+    calls independently re-fetching and re-preparing the same tickers (which
+    was quadrupling memory/CPU for a 3-strategy comparison and contributed
+    to an OOM kill in production). Safe to share: _TickerStrategyState only
+    ever reads its ticker's raw df through prepare(), which copies."""
     portfolio = portfolio or PortfolioParams()
     start_ts, end_ts = pd.Timestamp(start_date), pd.Timestamp(end_date)
     strategy_params = strategy_params or {}
 
-    bars = _load_universe(tickers, start_ts, end_ts)
+    if bars is None:
+        bars = _load_universe(tickers, start_ts, end_ts)
     states: dict[tuple[str, str], _TickerStrategyState] = {}
     for ticker, df in bars.items():
         for sid in strategy_ids:
@@ -371,13 +380,17 @@ def run_comparison(strategy_ids: list[str], tickers: list[str], start_date: str,
     per_strategy_stats: dict[str, StrategyStats] = {}
     all_trades: list[Trade] = []
 
+    # Loaded once and reused across every isolated run below plus the
+    # combined run — see _simulate()'s docstring for why this matters.
+    bars = _load_universe(tickers, pd.Timestamp(start_date), pd.Timestamp(end_date))
+
     for sid in strategy_ids:
-        result = _simulate([sid], tickers, start_date, end_date, strategy_params, portfolio_params, earnings_calendar)
+        result = _simulate([sid], tickers, start_date, end_date, strategy_params, portfolio_params, earnings_calendar, bars=bars)
         per_strategy_stats[sid] = compute_stats(sid, result.trades, result.starting_equity, result.equity_curve, result.funnel[sid])
         all_trades.extend(result.trades)
 
     if len(strategy_ids) > 1:
-        combined_result = _simulate(strategy_ids, tickers, start_date, end_date, strategy_params, portfolio_params, earnings_calendar)
+        combined_result = _simulate(strategy_ids, tickers, start_date, end_date, strategy_params, portfolio_params, earnings_calendar, bars=bars)
         combined_trades = combined_result.trades
         combined_funnel = Funnel(
             setups_found=sum(f.setups_found for f in combined_result.funnel.values()),
