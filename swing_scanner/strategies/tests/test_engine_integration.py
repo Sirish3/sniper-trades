@@ -73,6 +73,27 @@ class TestEngineIntegration(unittest.TestCase):
         csv_text = backtest_engine.trades_to_csv(result["trades"])
         self.assertIn("ticker,strategy,setup_date", csv_text.splitlines()[0])
 
+    def test_handles_tz_aware_bars_from_alpaca(self):
+        """Regression test: data.py's get_daily_bars returns a tz-aware
+        (UTC) DatetimeIndex in production (Alpaca's timestamps parse that
+        way), while start_date/end_date here are plain "YYYY-MM-DD" strings
+        -> tz-naive pd.Timestamps. Comparing the two used to raise "Cannot
+        compare tz-naive and tz-aware timestamps" before _to_naive() was
+        added — this pins that fix against the exact shape Alpaca returns."""
+        df = _pullback_bars()
+        df.index = df.index.tz_localize("UTC")
+
+        def fake_get_daily_bars(symbol, lookback_days=400, feed="iex", use_cache=True):
+            return df.copy()
+
+        start = df.index[0].date().isoformat()
+        end = df.index[-1].date().isoformat()
+
+        with mock.patch("backtest_engine.get_daily_bars", side_effect=fake_get_daily_bars):
+            result = backtest_engine.run_comparison(["pullback_ma"], ["FAKE"], start, end)
+
+        self.assertGreaterEqual(result["per_strategy"]["pullback_ma"].setups_found, 1)
+
     def test_max_concurrent_positions_enforced(self):
         df = _pullback_bars()
 

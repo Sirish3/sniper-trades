@@ -113,15 +113,30 @@ class _TickerStrategyState:
         self.position: Position | None = None
 
 
+def _to_naive(df: pd.DataFrame) -> pd.DataFrame:
+    """Alpaca's bar timestamps parse to tz-aware UTC (data.py's pd.to_datetime
+    on a "...Z" string); start_date/end_date come from plain "YYYY-MM-DD"
+    request params and are tz-naive. Comparing the two raises "Cannot compare
+    tz-naive and tz-aware timestamps", so every fetch is normalized to naive
+    here, once, right after it comes back — before any date comparison
+    touches it — so the rest of this module (and the strategy files, whose
+    own tests assume naive dates) can stay tz-agnostic."""
+    return df.tz_localize(None) if df.index.tz is not None else df
+
+
 def _fetch_with_enough_history(ticker: str, start_date: pd.Timestamp, end_date: pd.Timestamp) -> pd.DataFrame | None:
     lookback_days = (pd.Timestamp.today() - start_date).days + WARMUP_BUFFER_DAYS
     df = get_daily_bars(ticker, lookback_days=lookback_days, use_cache=True)
+    if df is not None and not df.empty:
+        df = _to_naive(df)
     # get_daily_bars caches one file per symbol per day regardless of the
     # lookback_days requested — a same-day cache hit from a smaller earlier
     # fetch (e.g. the live scanner's default 400-day pull) would silently
     # truncate a multi-year backtest. Detect that and force a fresh pull.
     if df is not None and not df.empty and df.index.min() > start_date - pd.Timedelta(days=30):
         df = get_daily_bars(ticker, lookback_days=lookback_days, use_cache=False)
+        if df is not None and not df.empty:
+            df = _to_naive(df)
     if df is None or df.empty:
         return None
     return df[df.index <= end_date]
