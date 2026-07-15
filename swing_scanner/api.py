@@ -10,6 +10,7 @@ Python services in this repo — run with:
 """
 from __future__ import annotations
 
+import dataclasses
 import math
 import os
 from datetime import date as date_cls, timedelta
@@ -17,6 +18,7 @@ from datetime import date as date_cls, timedelta
 import pandas as pd
 from flask import Flask, jsonify, request
 
+from backtest_engine import StrategyStats, Trade, run_comparison, trades_to_csv
 from chart_setups import STATUSES, create_setup, delete_setup, get_setup, list_setups, pattern_counts, update_setup
 from data import bars_df_to_candles, get_daily_bars, get_tradable_universe
 from database import init_db
@@ -28,6 +30,8 @@ from levels import TRAIL_RULE_TEXT, position_size
 from pattern_scan import run_pattern_scan
 from pipeline import TEST_SUBSET, run_scan
 from scheduler import start_scheduler
+from strategies import STRATEGIES, STRATEGY_LABELS
+from strategies.params import DEFAULT_PARAMS, PortfolioParams
 
 app = Flask(__name__)
 init_db()
@@ -57,6 +61,7 @@ def add_cors_headers(response):
 @app.route("/api/setups", methods=["OPTIONS"])
 @app.route("/api/setups/<setup_id>", methods=["OPTIONS"])
 @app.route("/api/pattern-scan/run", methods=["OPTIONS"])
+@app.route("/api/strategy-lab/run", methods=["OPTIONS"])
 def cors_preflight(setup_id=None):
     return "", 204
 
@@ -335,6 +340,105 @@ def pattern_scan_run():
         return jsonify({"error": str(exc)}), 502
 
     return jsonify(summary)
+
+
+MAX_BACKTEST_TICKERS = 25  # runs synchronously in the request — keep it bounded like /api/pattern-scan/run
+
+
+def _stats_to_json(stats: StrategyStats) -> dict:
+    return {
+        "strategyId": stats.strategy_id,
+        "totalReturnPct": _clean(round(stats.total_return_pct, 2)),
+        "cagrPct": _clean(round(stats.cagr_pct, 2)),
+        "winRatePct": _clean(round(stats.win_rate_pct, 1)),
+        "avgRMultiple": _clean(round(stats.avg_r_multiple, 3)),
+        # profit_factor is +inf with zero losing trades — not valid JSON, so
+        # it's surfaced as a string the frontend can render literally.
+        "profitFactor": "inf" if stats.profit_factor == float("inf") else _clean(round(stats.profit_factor, 3)),
+        "maxDrawdownPct": _clean(round(stats.max_drawdown_pct, 2)),
+        "numTrades": stats.num_trades,
+        "avgHoldingDays": _clean(round(stats.avg_holding_days, 1)),
+        "setupsFound": stats.setups_found,
+        "entriesTriggered": stats.entries_triggered,
+        "entriesSkippedEarnings": stats.entries_skipped_earnings,
+    }
+
+
+def _trade_to_json(trade: Trade) -> dict:
+    row = trade.to_row()
+    return {
+        "ticker": row["ticker"], "strategy": row["strategy"], "setupDate": row["setup_date"],
+        "entryDate": row["entry_date"], "entryPrice": row["entry_price"], "stopPrice": row["stop_price"],
+        "exitDate": row["exit_date"], "exitPrice": row["exit_price"], "exitReason": row["exit_reason"],
+        "shares": row["shares"], "rMultiple": _clean(row["r_multiple"]), "holdingDays": row["holding_days"],
+    }
+
+
+
+# Internal wiring fields on BaseBreakoutParams/EarningsGapParams (see
+# strategies/params.py) — set per-ticker by the engine itself, not
+# user-editable, so they're excluded from what the picker UI renders.
+_INTERNAL_PARAM_FIELDS = {"ticker", "earnings_calendar"}
+
+
+@app.route("/api/strategy-lab/strategies", methods=["GET"])
+def strategy_lab_strategies():
+    """Strategy ids/labels + default params, so the React tab can render a
+    picker and editable param fields without hardcoding either in JS."""
+    return jsonify({
+        "strategies": [
+            {
+                "id": sid, "label": STRATEGY_LABELS[sid],
+                "defaults": {k: v for k, v in dataclasses.asdict(DEFAULT_PARAMS[sid]).items()
+                             if k not in _INTERNAL_PARAM_FIELDS},
+            }
+            for sid in STRATEGIES
+        ],
+    })
+
+
+@app.route("/api/strategy-lab/run", methods=["POST"])
+def strategy_lab_run():
+    """Runs any subset of {pullback_ma, base_breakout, earnings_gap} over a
+    ticker list + date range and returns per-strategy + combined comparison
+    stats, plus a full trade log (also as CSV text for a frontend download
+    button — see backtest_engine.py for the simulation itself).
+    """
+    body = request.get_json(force=True, silent=True) or {}
+
+    strategy_ids = [s for s in body.get("strategies", []) if s in STRATEGIES]
+    if not strategy_ids:
+        return jsonify({"error": f"strategies must be a non-empty subset of {sorted(STRATEGIES)}"}), 400
+
+    tickers = [t.strip().upper() for t in body.get("tickers", []) if t.strip()][:MAX_BACKTEST_TICKERS]
+    if not tickers:
+        return jsonify({"error": "tickers must be a non-empty list"}), 400
+
+    start_date, end_date = body.get("startDate"), body.get("endDate")
+    if not start_date or not end_date:
+        return jsonify({"error": "startDate and endDate (YYYY-MM-DD) are required"}), 400
+
+    portfolio_params = PortfolioParams(
+        account_equity=float(body.get("accountEquity", 100_000.0)),
+        risk_pct_per_trade=float(body.get("riskPct", 1.0)),
+        max_concurrent_positions=int(body.get("maxConcurrentPositions", 4)),
+        fill_timing=body.get("fillTiming", "close"),
+        slippage_pct=float(body.get("slippagePct", 0.05)),
+        commission_per_side=float(body.get("commissionPerSide", 0.0)),
+    )
+
+    try:
+        result = run_comparison(strategy_ids, tickers, start_date, end_date, portfolio_params=portfolio_params)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+
+    trades = sorted(result["trades"], key=lambda t: t.entry_date)
+    return jsonify({
+        "perStrategy": {sid: _stats_to_json(stats) for sid, stats in result["per_strategy"].items()},
+        "combined": _stats_to_json(result["combined"]),
+        "trades": [_trade_to_json(t) for t in trades],
+        "tradeLogCsv": trades_to_csv(trades),
+    })
 
 
 if __name__ == "__main__":

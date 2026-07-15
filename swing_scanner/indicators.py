@@ -13,6 +13,22 @@ def sma(series: pd.Series, window: int) -> pd.Series:
     return series.rolling(window=window, min_periods=window).mean()
 
 
+def ema(series: pd.Series, period: int) -> pd.Series:
+    """Exponential moving average, standard alpha = 2/(period+1)."""
+    return series.ewm(span=period, adjust=False, min_periods=period).mean()
+
+
+def rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    """Wilder's RSI (alpha = 1/period, same smoothing convention as atr()
+    above) — not the more common span=period EMA some libraries use, which
+    is a different (faster-reacting) average."""
+    delta = series.diff()
+    gain = delta.clip(lower=0).ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
+    loss = (-delta.clip(upper=0)).ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
+    rs = gain / loss.replace(0, float("nan"))
+    return 100 - (100 / (1 + rs))
+
+
 def sma_trending_up(sma_series: pd.Series, lookback: int = 20) -> bool:
     """True if the SMA today is higher than it was `lookback` bars ago —
     Trend Template condition #2 (SMA200 rising, not just "above")."""
