@@ -16,8 +16,6 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 
-from indicators import sma
-
 logger = logging.getLogger(__name__)
 
 load_dotenv()
@@ -209,37 +207,6 @@ def get_daily_bars(symbol: str, lookback_days: int = 400, feed: str = "iex", use
     if use_cache:
         df.to_parquet(cache_file)
     return df
-
-
-def bars_df_to_candles(df: pd.DataFrame, days: int | None = None) -> list[dict]:
-    """Converts a get_daily_bars() DataFrame (o/h/l/c/v columns, indexed by
-    date) into the {date, open, high, low, close, volume, sma50, sma150,
-    sma200} dict shape both api.py's candle routes and pattern_detector.py
-    (via from_alpaca_json.py, which only reads the OHLCV keys and ignores
-    the sma* ones) consume — one conversion, reused everywhere instead of
-    each caller re-deriving it. SMAs computed against the full `df` before
-    trimming to `days` so early bars in a short window still get a real
-    value where history extends further back — same approach as the
-    existing /api/chart/<ticker> route.
-    """
-    sma50 = sma(df["c"], 50)
-    sma150 = sma(df["c"], 150)
-    sma200 = sma(df["c"], 200)
-    rows = df.tail(days) if days else df
-    return [
-        {
-            "date": date.strftime("%Y-%m-%d"),
-            "open": round(float(row["o"]), 2),
-            "high": round(float(row["h"]), 2),
-            "low": round(float(row["l"]), 2),
-            "close": round(float(row["c"]), 2),
-            "volume": int(row["v"]),
-            "sma50": round(float(sma50.loc[date]), 2) if pd.notna(sma50.loc[date]) else None,
-            "sma150": round(float(sma150.loc[date]), 2) if pd.notna(sma150.loc[date]) else None,
-            "sma200": round(float(sma200.loc[date]), 2) if pd.notna(sma200.loc[date]) else None,
-        }
-        for date, row in rows.iterrows()
-    ]
 
 
 def get_tradable_universe(

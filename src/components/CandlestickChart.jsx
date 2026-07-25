@@ -3,8 +3,6 @@ import {
   ResponsiveContainer, ReferenceLine, ReferenceArea, Line,
 } from 'recharts'
 
-// Same SMA periods/colors as SwingScanner.jsx's chart, for visual
-// consistency across the app's two candlestick/line charts.
 const SMA_LINES = [
   { key: 'sma50', color: '#22c55e', label: 'SMA50' },
   { key: 'sma150', color: '#eab308', label: 'SMA150' },

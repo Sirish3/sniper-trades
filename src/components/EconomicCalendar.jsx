@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 
 // Calls the swing_scanner Flask API's /api/economic-calendar endpoint —
-// same API_BASE pattern as SwingScanner.jsx (dev proxy locally, absolute
-// VITE_SWING_SCANNER_API_URL in production).
+// dev-only Vite proxy locally, absolute VITE_SWING_SCANNER_API_URL in
+// production (see vite.config.js).
 const API_BASE = import.meta.env.VITE_SWING_SCANNER_API_URL || '/swing-scanner-api'
 
 const IMPACT_LEVELS = ['High', 'Medium', 'Low']

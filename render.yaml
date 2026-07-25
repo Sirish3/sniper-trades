@@ -18,9 +18,8 @@ services:
       - key: ALERT_TO_EMAIL
         sync: false
 
-  # Swing scanner (Trend Template + VCP, plus Economic/Earnings calendars)
-  # API — backs the React "Scanner", "Economic Calendar", and "Earnings"
-  # tabs. `name` matches the already-existing manually-created service
+  # Swing scanner API — backs the React "Economic Calendar" tab. `name`
+  # matches the already-existing manually-created service
   # (sniper-trades.onrender.com), our one available free web service slot
   # beyond the paid scheduler above, so this Blueprint adopts it instead
   # of creating a new one. Deploys swing_scanner/ directly now (no
@@ -42,5 +41,3 @@ services:
         value: https://paper-api.alpaca.markets
       - key: ALPACA_DATA_URL
         value: https://data.alpaca.markets/v2/stocks
-      - key: DATABASE_URL
-        sync: false # same Neon Postgres instance as the other two services — required since chart_setups was added

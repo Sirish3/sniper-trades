@@ -5,16 +5,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this repo is
 
 Not one app — a React/Vite frontend plus **three independently-deployed Python
-backends**, each with its own dependencies, its own `.env`, and (mostly) its
-own Postgres tables in one shared Neon instance. There is no shared code
-between the Python services; each owns its own `database.py` /
-SQLAlchemy `Base` rather than importing across service boundaries, because
-they deploy and scale independently.
+backends**, each with its own dependencies and its own `.env`. There is no
+shared code between the Python services; the ones that touch Postgres (in
+one shared Neon instance) own their own `database.py` / SQLAlchemy `Base`
+rather than importing across service boundaries, because they deploy and
+scale independently. `swing_scanner/` currently has no database of its own —
+see the table below.
 
 | Piece | Path | Deploys to | Purpose |
 |---|---|---|---|
 | Frontend | `src/` | Cloudflare Pages (`stockpilot.cc`) | React app, all tabs |
-| Swing scanner API | `swing_scanner/` | Render (`sniper-trades`) | Scanner, Economic Calendar, Earnings, Chart Patterns |
+| Swing scanner API | `swing_scanner/` | Render (`sniper-trades`) | Economic Calendar tab; also a standalone Streamlit scanner UI (not deployed) |
 | Execution scheduler | `backend/` | Render (`sniper-trades-scheduler`) | 52w-high breakout scans + email alerts, 3x/day cron |
 | Users API | `users_api/` | not deployed anywhere yet | Bare FastAPI CRUD prototype, **no auth**, unrelated to the rest |
 | Legacy, don't touch without asking | `server/`, `sp500_scanner/` | not deployed | Orphaned Node scanner backend and an earlier standalone Python CLI scanner, both superseded |
@@ -25,7 +26,7 @@ they deploy and scale independently.
 ```bash
 npm run dev            # Vite dev server only
 npm run dev:swing      # swing_scanner/api.py only (Windows venv path hardcoded)
-npm run dev:all        # both, concurrently — needed for Scanner/Economic Calendar/Earnings/Chart Patterns tabs to work locally
+npm run dev:all        # both, concurrently — needed for the Economic Calendar tab to work locally
 npm run build
 npm run lint
 npm test               # vitest run — all tests, once
@@ -37,7 +38,7 @@ npx vitest run src/utils/indicators.test.js   # a single test file
 cd swing_scanner
 venv\Scripts\activate        # Windows; source venv/bin/activate elsewhere
 pip install -r requirements.txt
-python api.py                 # Flask API, backs the React tabs above
+python api.py                 # Flask API, backs the React Economic Calendar tab
 streamlit run app.py          # standalone Streamlit UI, same pipeline.py
 python test_pipeline.py       # CLI smoke test, no Streamlit
 ```
@@ -66,9 +67,8 @@ the visible `tab-nav`), not a new route.
 
 **Two ways JS calls out to Python**, both baked in at Vite **build** time via
 `import.meta.env`:
-- `VITE_SWING_SCANNER_API_URL` — used by `SwingScanner.jsx`,
-  `EconomicCalendar.jsx`, `EarningsCalendar.jsx`, and
-  `utils/chartSetupsApi.js`. Falls back to the dev-only proxy path
+- `VITE_SWING_SCANNER_API_URL` — used by `EconomicCalendar.jsx`. Falls
+  back to the dev-only proxy path
   `/swing-scanner-api` (see `vite.config.js`) when unset — in production
   this must be set to `https://sniper-trades.onrender.com` or every fetch
   silently gets Cloudflare's SPA fallback HTML back instead of JSON
@@ -104,18 +104,26 @@ a class is layout-neutral.
 **Charts**: Recharts only (already a dependency; don't add another
 charting lib). Candlesticks are hand-built — `CandlestickChart.jsx` draws
 wicks/bodies via a custom `Bar` `shape`, since Recharts has no native OHLC
-mark. Annotation overlays (support zones / resistance lines / trendlines)
-come from a `chart_annotations` JSON blob and are drawn with
+mark. Not currently rendered by any tab (its last caller, the Chart
+Patterns feature, was removed) but kept in the tree as the reusable
+candlestick building block for whatever needs one next. Accepts an
+`annotations` prop for support zones / resistance lines / trendlines from
+a `chart_annotations`-shaped JSON blob, drawn with
 `ReferenceArea`/`ReferenceLine`/sparse-`Line`-with-`connectNulls` — the
 Y-axis domain must explicitly include annotation values, since it doesn't
 auto-expand past the candle high/low range on its own.
 
 ## swing_scanner/ architecture
 
-Two frontends (Streamlit `app.py` and Flask `api.py`) share one scan engine
-(`pipeline.py`) so scan logic exists in exactly one place. `api.py` is a
-flat single-file Flask app — no blueprints, no app factory — new routes go
-directly on the module-level `app`.
+Streamlit `app.py` and Flask `api.py` used to be two frontends sharing one
+scan engine (`pipeline.py`); now only `app.py` calls it — `api.py` lost its
+last `pipeline.py`-backed route (`/api/scan`, the React "Scanner" tab) and
+today only serves `/health` and `/api/economic-calendar`. `pipeline.py`,
+`screener.py`, `levels.py`, and the rest of the scan engine are still live
+code (Streamlit + `test_pipeline.py` use them), just not reachable from the
+React app anymore. `api.py` is a flat single-file Flask app — no
+blueprints, no app factory — new routes go directly on the module-level
+`app`.
 
 - `data.py` — the only Alpaca REST wrapper in this service (raw `requests`
   calls, no SDK), with disk caching (`.cache/`, per-symbol-per-day parquet
@@ -125,16 +133,15 @@ directly on the module-level `app`.
   this function, preserve that contract, since callers have no try/except
   of their own and an uncaught exception here becomes a raw Flask 500
   instead of a clean 404.
-- `chart_setups.py` + `database.py` — the `chart_setups` Postgres table
-  (SQLAlchemy, this service's own engine/session, `Base.metadata.create_all`
-  on startup — no Alembic anywhere in this repo, don't introduce it for
-  one table).
 - CORS is manual (`ALLOWED_ORIGINS` set + `after_request` hook), not
   `flask-cors` — matches `backend/app.py`'s pattern. Add new origins there
   if a new frontend domain needs to call this API.
-- Chart Patterns admin writes (`POST`/`PUT`/`DELETE /api/setups`) are
-  **intentionally unauthenticated** — a prior shared-token gate was removed
-  as not worth the operational friction for a low-risk internal tool.
+- No Postgres/SQLAlchemy dependency in this service — the one feature that
+  needed it (Chart Patterns / `chart_setups` table, plus its
+  `database.py`, `pattern_scan.py`, `pattern_detector.py`, and the 4:30pm
+  ET `scheduler.py` cron that populated it) was removed. Don't reintroduce
+  `DATABASE_URL` here without a real reason; `render.yaml`'s
+  `sniper-trades` service no longer declares it.
 
 ## Deployment gotchas (all hit in practice, not hypothetical)
 
@@ -152,12 +159,10 @@ directly on the module-level `app`.
   Dockerfile/requirements — check those explicitly after moving a service
   between directories.
 - The `sniper-trades` (swing_scanner) and `sniper-trades-scheduler`
-  (backend) Render services need **separate** env vars for anything that
-  looks shared (`ALPACA_*`, `DATABASE_URL`) — they don't inherit from each
-  other, and neither inherits from Cloudflare's `VITE_ALPACA_*`.
-- `swing_scanner` didn't require `DATABASE_URL` before `chart_setups` was
-  added; it's non-optional now (`database.py` raises at import time if
-  unset, crashing the whole service on boot, not just chart-setup routes).
+  (backend) Render services need **separate** `ALPACA_*` env vars — they
+  don't inherit from each other, and neither inherits from Cloudflare's
+  `VITE_ALPACA_*`. (`swing_scanner` no longer uses `DATABASE_URL` at all;
+  only the `backend`/execution-scheduler service still needs Postgres.)
 
 ## Legacy code — ask before touching
 

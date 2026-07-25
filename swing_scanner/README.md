@@ -23,7 +23,9 @@ elsewhere.
 
 ## Run it
 
-Two frontends share the same scan logic (`pipeline.py`):
+The scan itself (`pipeline.py`) is Streamlit-only now — the React app no
+longer has a Scanner tab; its Flask API (`api.py`) only backs the
+Economic Calendar tab.
 
 **Streamlit (standalone)**
 
@@ -40,19 +42,13 @@ hit Alpaca's rate limit (handled with retry/backoff, but still slow).
 Click any row in the results table to see that ticker's chart (candles +
 SMA50/150/200 + entry/stop lines for confirmed VCP setups).
 
-**React tab ("Scanner")**
+**React tab ("Economic Calendar")**
 
 ```bash
 python api.py    # Flask API on :8003, proxied by Vite's /swing-scanner-api rule
 ```
 
-Then `npm run dev` in the repo root and open the "Scanner" tab — same
-Run Scan button, table, filters, and click-a-row chart (Recharts line
-chart with SMA overlays + entry/stop reference lines, not candles — this
-repo's other tabs use the same line-chart convention rather than a
-candlestick library). Position sizing is computed client-side in JS
-(trivial arithmetic — `POST /api/position-size` also exists on the Flask
-side for parity, but the React tab doesn't call it).
+Then `npm run dev` in the repo root and open the "Economic Calendar" tab.
 
 ## CLI smoke test
 
@@ -119,8 +115,8 @@ calendar check — only tagged (`Caution Tags` column) so the user decides.
   Template → VCP → levels), framework-independent so both UIs call the
   same code.
 - `app.py` — Streamlit UI (Scanner / Economic Calendar / Earnings tabs).
-- `api.py` — Flask API for the React "Scanner" tab
-  (`src/components/SwingScanner.jsx` in the main repo).
+- `api.py` — Flask API for the React "Economic Calendar" tab
+  (`src/components/EconomicCalendar.jsx` in the main repo).
 - `economic_calendar.py` — Finviz live scrape + `known_events.py` static
   merge, filtering, and `get_high_impact_dates()`.
 - `known_events.py` — static list of confirmed BLS/Fed release dates;
