@@ -7,11 +7,8 @@ import AnalysisResult from './components/AnalysisResult'
 import WeekHighScreener from './components/WeekHighScreener'
 import SwingScanner from './components/SwingScanner'
 import EconomicCalendar from './components/EconomicCalendar'
-import EarningsCalendar from './components/EarningsCalendar'
 import ChartPatterns from './components/ChartPatterns'
 import ChartSetupAdmin from './components/ChartSetupAdmin'
-import FairValue from './components/FairValue'
-import StrategyLab from './components/StrategyLab'
 import { SearchIcon, LoaderIcon, SettingsIcon } from './components/Icons'
 import { analyzeTicker } from './utils/claudeApi'
 import { getTechnicalAnalysis } from './utils/marketData'
@@ -27,7 +24,6 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [activeTab, setActiveTab] = useState('analysis')
-  const [scannerTickers, setScannerTickers] = useState([])
 
   const handleSaveApiKey = (key) => {
     setApiKey(key)
@@ -115,24 +111,6 @@ function App() {
         >
           Economic Calendar
         </button>
-        <button
-          className={`tab-btn ${activeTab === 'earnings' ? 'active' : ''}`}
-          onClick={() => setActiveTab('earnings')}
-        >
-          Earnings
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'fairvalue' ? 'active' : ''}`}
-          onClick={() => setActiveTab('fairvalue')}
-        >
-          Fair Value
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'strategylab' ? 'active' : ''}`}
-          onClick={() => setActiveTab('strategylab')}
-        >
-          Strategy Lab
-        </button>
       </nav>
 
       <main className="app-main">
@@ -167,12 +145,9 @@ function App() {
         )}
 
         {activeTab === 'weekhigh' && <WeekHighScreener />}
-        {activeTab === 'scanner' && <SwingScanner onResults={setScannerTickers} />}
+        {activeTab === 'scanner' && <SwingScanner />}
         {activeTab === 'chartpatterns' && <ChartPatterns />}
         {activeTab === 'econcalendar' && <EconomicCalendar />}
-        {activeTab === 'earnings' && <EarningsCalendar scanTickers={scannerTickers} />}
-        {activeTab === 'fairvalue' && <FairValue />}
-        {activeTab === 'strategylab' && <StrategyLab />}
         {activeTab === 'chartSetupsAdmin' && <ChartSetupAdmin apiKey={apiKey} />}
       </main>
 

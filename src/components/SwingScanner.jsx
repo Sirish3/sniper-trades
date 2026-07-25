@@ -55,7 +55,7 @@ function CustomTooltip({ active, payload, label }) {
   )
 }
 
-export default function SwingScanner({ onResults }) {
+export default function SwingScanner() {
   const [useTestSubset, setUseTestSubset] = useState(true)
   const [scanning, setScanning] = useState(false)
   const [error, setError] = useState(null)
@@ -93,7 +93,6 @@ export default function SwingScanner({ onResults }) {
       if (!res.ok) throw new Error(data.error || 'Scan failed')
       setResults(data.results)
       setScanMeta({ scannedCount: data.scannedCount, passedCount: data.passedCount, trailRule: data.trailRule })
-      onResults?.(data.results.map(r => r.ticker))
     } catch (err) {
       setError(err.message)
     } finally {
