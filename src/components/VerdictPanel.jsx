@@ -6,13 +6,6 @@ import { summarizeVerdict } from '../utils/evaluateStock'
 // summarizeVerdict() is the same headline/reason logic AnalysisPanel's
 // "Show Details" uses, so the badge and the full breakdown never disagree
 // on what to say about the same evaluation.
-//
-// Named VerdictPanel, not VerdictBadge, on purpose: AnalysisResult.jsx (the
-// separate Claude-powered "Analysis" tab) already has its own local
-// VerdictBadge component and `.verdict-badge` CSS class for its own
-// GO/EXIT/HOLD verdict — a different, unrelated verdict system. Reusing the
-// name here would recreate exactly the kind of confusion this refactor is
-// fixing.
 const DISCLAIMER = 'Educational only, not financial advice.'
 
 function evidenceChips(evaluation) {
