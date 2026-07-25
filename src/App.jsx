@@ -5,6 +5,7 @@ import AlpacaStatus from './components/AlpacaStatus'
 import Footer from './components/Footer'
 import WeekHighScreener from './components/WeekHighScreener'
 import EconomicCalendar from './components/EconomicCalendar'
+import FilterScreener from './components/FilterScreener'
 
 const STORAGE_KEY = 'swing-trade-analyzer-api-key'
 
@@ -48,11 +49,18 @@ function App() {
         >
           Economic Calendar
         </button>
+        <button
+          className={`tab-btn ${activeTab === 'filter' ? 'active' : ''}`}
+          onClick={() => setActiveTab('filter')}
+        >
+          Filter
+        </button>
       </nav>
 
       <main className="app-main">
         {activeTab === 'weekhigh' && <WeekHighScreener />}
         {activeTab === 'econcalendar' && <EconomicCalendar />}
+        {activeTab === 'filter' && <FilterScreener />}
       </main>
 
       <Footer />
